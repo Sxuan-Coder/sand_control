@@ -1,152 +1,109 @@
-import axios from 'axios'
+// 使用 IPC 通信代替直接的 axios 请求
+// 所有的 API 调用都通过主进程处理
 
-// 创建axios实例
-const api = axios.create({
-  baseURL: 'http://localhost:8000',
-  timeout: 5000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-})
-
-// 请求拦截器
-api.interceptors.request.use(
-  (config) => {
-    return config
-  },
-  (error) => {
-    console.error('请求错误:', error)
-    return Promise.reject(error)
-  }
-)
-
-// 响应拦截器
-api.interceptors.response.use(
-  (response) => {
-    return response.data
-  },
-  (error) => {
-    console.error('响应错误:', error)
-    return Promise.reject(error)
-  }
-)
-
-export const getSystemStatus = () => {
-  return api.get('/status')
+// 系统状态相关 API
+export const getSystemStatus = async () => {
+  return window.api.getSystemStatus()
 }
 
-export const initializeSystem = (config) => {
-  return api.post('/initialize', config)
+export const initializeSystem = async (config) => {
+  return window.api.initializeSystem(config)
 }
 
-export const openLight = () => {
-  return api.post('/light/open')
+// 灯光控制 API
+export const openLight = async () => {
+  return window.api.openLight()
 }
 
-export const closeLight = () => {
-  return api.post('/light/close')
+export const closeLight = async () => {
+  return window.api.closeLight()
 }
 
-export const startProcess = (config) => {
-  return api.post('/start', config)
+// 流程控制 API
+export const startProcess = async (config) => {
+  return window.api.startProcess(config)
 }
 
-export const stopProcess = () => {
-  return api.post('/stop')
+export const stopProcess = async () => {
+  return window.api.stopProcess()
 }
 
-export const cleanSand = (options = {}) => {
-  // 可以传入选项如：循环次数、是否测试模式等
-  return api.post('/clean', options)
+// 清砂相关 API
+export const cleanSand = async (options = {}) => {
+  return window.api.cleanSand(options)
 }
 
-export const getCleanStatus = () => {
-  return api.get('/clean/status')
+export const getCleanStatus = async () => {
+  return window.api.getCleanStatus()
 }
 
-export const stopCleanProcess = () => {
-  return api.post('/clean/stop')
+export const stopCleanProcess = async () => {
+  return window.api.stopCleanProcess()
 }
 
-// 电子秤相关API
-export const getScalePorts = () => {
-  return api.get('/scale/ports')
+// 电子秤相关 API
+export const getScalePorts = async () => {
+  return window.api.getScalePorts()
 }
 
-export const getScaleStatus = () => {
-  return api.get('/scale/status')
+export const getScaleStatus = async () => {
+  return window.api.getScaleStatus()
 }
 
-export const connectScale = (port) => {
-  return api.post(`/scale/connect/${port}`)
+export const connectScale = async (port) => {
+  return window.api.connectScale(port)
 }
 
-export const disconnectScale = () => {
-  return api.post('/scale/disconnect')
+export const disconnectScale = async () => {
+  return window.api.disconnectScale()
 }
 
-export const calibrateZero = () => {
-  return api.post('/scale/calibrate/zero')
+export const calibrateZero = async () => {
+  return window.api.calibrateZero()
 }
 
-export const calibrateGain = (calibrationWeight, slaveAddress = 1) => {
-  return api.post('/scale/calibrate/gain', {
-    calibration_weight: calibrationWeight,
-    slave_address: slaveAddress
-  })
+export const calibrateGain = async (calibrationWeight, slaveAddress = 1) => {
+  return window.api.calibrateGain(calibrationWeight, slaveAddress)
 }
 
-export const getWeight = () => {
-  return api.get('/scale/weight')
+export const getWeight = async () => {
+  return window.api.getWeight()
 }
 
-// 获取指定目录下的图片列表
-export const getDirectoryImages = (directory) => {
-  return api.get('/images/list', { params: { directory } })
+// 图片相关 API
+export const getDirectoryImages = async (directory) => {
+  return window.api.getDirectoryImages(directory)
 }
 
 // 获取图片URL
-export const getImageUrl = (imagePath) => {
-  return `${api.defaults.baseURL}/images/file?path=${encodeURIComponent(imagePath)}`
+export const getImageUrl = async (imagePath) => {
+  return window.api.getImageUrl(imagePath)
 }
 
-// 讯飞星火大模型API配置
-const XFYUN_API_URL = '/xfyun-api/v1/chat/completions' // 使用代理路径
-const AUTH_TOKEN = 'pFKHvqJefKoFYrsZVvqJ:QneWSeXeqoeefFUBsAcV'
-
-// 调用讯飞星火大模型API
+// 讯飞星火大模型 API
 export const chatWithXfyun = async (userMessage) => {
   try {
-    // 构建请求体
-    const requestBody = {
-      model: '4.0Ultra',
-      messages: [
-        {
-          role: 'user',
-          content: userMessage
-        }
-      ],
-      stream: false
-    }
-
-    // 请求头设置
-    const headers = {
-      Authorization: `Bearer ${AUTH_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-
-    // 发送POST请求
-    const response = await axios.post(XFYUN_API_URL, requestBody, { headers })
-
-    // 返回响应内容
-    if (response.data && response.data.choices && response.data.choices.length > 0) {
-      return response.data.choices[0].message.content
+    const result = await window.api.chatWithXfyun(userMessage)
+    if (result.success) {
+      return result.content
     } else {
-      throw new Error('无效的API响应格式')
+      throw new Error(result.error || '调用星火大模型失败')
     }
   } catch (error) {
     console.error('调用讯飞星火大模型API失败:', error)
     throw error
+  }
+}
+
+// 测试服务器连接状态
+export const testServerConnection = async () => {
+  return window.api.testServerConnection()
+}
+
+// 为了兼容现有代码，创建一个虚拟的 api 对象
+const api = {
+  defaults: {
+    baseURL: 'http://127.0.0.1:8000'
   }
 }
 

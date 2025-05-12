@@ -2,54 +2,111 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
-import { dirname } from 'path'
+import path from 'path'
+// import { dirname } from 'path'
 import icon from '../../resources/icon.png?asset'
+import axios from 'axios'
 
 // 存储Python进程的引用
 let pythonProcess = null
 
-// 启动Python服务器函数
+// 启动Python服务器函数并返回Promise
 function startPythonServer() {
-  try {
-    // 获取Python脚本的路径
-    const pythonScriptPath = join(dirname(__dirname), 'main', 'python', 'api', 'run_server.py')
-    console.log('Python脚本路径:', pythonScriptPath)
+  return new Promise((resolve, reject) => {
+    try {
+      // 获取Python脚本的路径
+      const pythonScriptPath = path.join(app.getAppPath(), 'src', 'main', 'python', 'api', 'app.py')
+      console.log('Python脚本路径:', pythonScriptPath)
 
-    // 启动Python进程
-    pythonProcess = spawn('python', [
-      pythonScriptPath,
-      '--host',
-      '127.0.0.1',
-      '--port',
-      '8000',
-      '--mock'
-    ])
+      // 设置环境变量确保输出中文
+      const env = Object.assign({}, process.env)
+      env.PYTHONIOENCODING = 'utf8'
+      env.PYTHONUNBUFFERED = '1' // 禁用缓冲，确保输出实时显示
+      env.PYTHONUTF8 = '1' // 强制使用UTF-8编码
 
-    // 监听Python进程的输出
-    pythonProcess.stdout.on('data', (data) => {
-      console.log(`Python服务器输出: ${data}`)
-    })
+      // 启动Python进程
+      pythonProcess = spawn('python', [pythonScriptPath], {
+        env: env,
+        // 在Windows上指定编码
+        windowsHide: true,
+        windowsVerbatimArguments: false
+      })
 
-    // 监听Python进程的错误
-    pythonProcess.stderr.on('data', (data) => {
-      console.error(`Python服务器错误: ${data}`)
-    })
+      // 标记服务器是否已启动
+      let serverStarted = false
 
-    // 监听Python进程退出
-    pythonProcess.on('close', (code) => {
-      console.log(`Python服务器进程退出，退出码: ${code}`)
-      pythonProcess = null
-    })
+      // 监听Python进程的输出
+      pythonProcess.stdout.on('data', (data) => {
+        try {
+          // 尝试使用utf8解码
+          const output = data.toString('utf8')
+          console.log(`Python服务器输出: ${output}`)
 
-    return pythonProcess
-  } catch (error) {
-    console.error('启动Python服务器时出错:', error)
-    return null
-  }
+          // 检查输出中是否包含服务器启动成功的信息
+          if (
+            output.includes('Uvicorn running on') ||
+            output.includes('Application startup complete')
+          ) {
+            if (!serverStarted) {
+              serverStarted = true
+              console.log('Python服务器已成功启动')
+              resolve(pythonProcess)
+            }
+          }
+        } catch (error) {
+          console.error('解析Python输出时出错:', error)
+        }
+      })
+
+      // 监听Python进程的错误
+      pythonProcess.stderr.on('data', (data) => {
+        try {
+          // 尝试使用utf8解码
+          const errorOutput = data.toString('utf8')
+          console.error(`Python服务器错误: ${errorOutput}`)
+
+          // 如果在错误输出中也能检测到服务器启动（某些框架会在stderr输出启动信息）
+          if (
+            errorOutput.includes('Uvicorn running on') ||
+            errorOutput.includes('Application startup complete')
+          ) {
+            if (!serverStarted) {
+              serverStarted = true
+              console.log('Python服务器已成功启动')
+              resolve(pythonProcess)
+            }
+          }
+        } catch (error) {
+          console.error('解析Python错误输出时出错:', error)
+        }
+      })
+
+      // 监听Python进程退出
+      pythonProcess.on('close', (code) => {
+        console.log(`Python服务器进程退出，退出码: ${code}`)
+        pythonProcess = null
+        if (!serverStarted) {
+          reject(new Error(`Python服务器启动失败，退出码: ${code}`))
+        }
+      })
+
+      // 设置超时，防止无限等待
+      setTimeout(() => {
+        if (!serverStarted) {
+          console.log('Python服务器启动超时，继续执行...')
+          serverStarted = true
+          resolve(pythonProcess) // 超时后也继续执行，避免应用卡死
+        }
+      }, 15000) // 15秒超时，给服务器更多启动时间
+    } catch (error) {
+      console.error('启动Python服务器时出错:', error)
+      reject(error)
+    }
+  })
 }
 
 function createWindow() {
-  // Create the browser window.
+  // 创建浏览器窗口
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
@@ -58,7 +115,9 @@ function createWindow() {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webSecurity: false, // 关闭网络安全限制，允许跨域请求
+      allowRunningInsecureContent: true // 允许运行不安全的内容
     }
   })
 
@@ -66,13 +125,25 @@ function createWindow() {
     mainWindow.show()
   })
 
+  // 设置CSP头，允许连接到本地API服务器
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*"
+        ]
+      }
+    })
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
+  // 基于electron-vite cli的渲染器热模块替换(HMR)
+  // 在开发环境中加载远程URL，在生产环境中加载本地html文件
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -80,31 +151,161 @@ function createWindow() {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+// 当Electron完成初始化并准备创建浏览器窗口时将调用此方法
+// 某些API只能在此事件发生后使用
 app.whenReady().then(() => {
-  // Set app user model id for windows
+  // 为Windows设置应用程序用户模型ID
   electronApp.setAppUserModelId('com.electron')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
+  // IPC测试
   ipcMain.on('ping', () => console.log('pong'))
 
-  // 启动Python服务器
-  startPythonServer()
+  // 处理网络请求
+  ipcMain.handle('fetch-data', async (event, url) => {
+    try {
+      console.log(`正在请求URL: ${url}`)
+      const response = await fetch(url)
+      const data = await response.text()
+      return { success: true, data }
+    } catch (error) {
+      console.error(`请求失败: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
 
-  createWindow()
+  // 创建 axios 实例用于 API 调用
+  const api = axios.create({
+    baseURL: 'http://127.0.0.1:8000',
+    timeout: 5000,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+
+  // 通用 API 调用处理程序
+  ipcMain.handle('api-call', async (event, { endpoint, method, data, params }) => {
+    try {
+      console.log(`主进程 API 调用: ${method.toUpperCase()} ${endpoint}`)
+      let response
+
+      switch (method.toLowerCase()) {
+        case 'get':
+          response = await api.get(endpoint, { params })
+          break
+        case 'post':
+          response = await api.post(endpoint, data)
+          break
+        case 'put':
+          response = await api.put(endpoint, data)
+          break
+        case 'delete':
+          response = await api.delete(endpoint, { data })
+          break
+        default:
+          throw new Error(`不支持的方法: ${method}`)
+      }
+
+      return { success: true, data: response.data }
+    } catch (error) {
+      console.error(`API 调用失败 (${endpoint}): ${error.message}`)
+      return {
+        success: false,
+        error: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      }
+    }
+  })
+
+  // 获取图片 URL
+  ipcMain.handle('get-image-url', async (event, { imagePath }) => {
+    return `http://127.0.0.1:8000/images/file?path=${encodeURIComponent(imagePath)}`
+  })
+
+  // 测试服务器连接
+  ipcMain.handle('test-server-connection', async () => {
+    try {
+      const response = await api.get('/hello')
+      return { success: true, message: '服务器连接成功', data: response.data }
+    } catch (error) {
+      console.error('服务器连接失败:', error)
+      return { success: false, message: '服务器连接失败', error: error.message }
+    }
+  })
+
+  // 讯飞星火大模型 API
+  ipcMain.handle('chat-with-xfyun', async (event, { userMessage }) => {
+    try {
+      // 讯飞星火大模型 API 配置
+      const XFYUN_API_URL = 'http://127.0.0.1:8000/xfyun-api/v1/chat/completions' // 使用代理路径
+      const AUTH_TOKEN = 'pFKHvqJefKoFYrsZVvqJ:QneWSeXeqoeefFUBsAcV'
+
+      // 构建请求体
+      const requestBody = {
+        model: '4.0Ultra',
+        messages: [
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ],
+        stream: false
+      }
+
+      // 请求头设置
+      const headers = {
+        Authorization: `Bearer ${AUTH_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+
+      // 发送POST请求
+      const response = await axios.post(XFYUN_API_URL, requestBody, { headers })
+
+      // 返回响应内容
+      if (response.data && response.data.choices && response.data.choices.length > 0) {
+        return { success: true, content: response.data.choices[0].message.content }
+      } else {
+        throw new Error('无效的API响应格式')
+      }
+    } catch (error) {
+      console.error('调用讯飞星火大模型API失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 启动Python服务器，等待服务器启动完成后再创建窗口
+  console.log('正在启动Python服务器...')
+  startPythonServer()
+    .then(() => {
+      console.log('Python服务器已启动，现在创建窗口...')
+      createWindow()
+
+      // 添加IPC处理程序，允许渲染进程请求API状态
+      ipcMain.handle('check-api-status', async () => {
+        try {
+          // 简单的HTTP请求检查API是否可用
+          const response = await fetch('http://127.0.0.1:8000/hello')
+          const data = await response.json()
+          return { success: true, data }
+        } catch (error) {
+          return { success: false, error: error.message }
+        }
+      })
+    })
+    .catch((error) => {
+      console.error('Python服务器启动失败:', error)
+      // 即使Python服务器启动失败，也创建窗口，但可能某些功能不可用
+      console.log('尽管Python服务器启动失败，仍然创建窗口...')
+      createWindow()
+    })
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+    // 在macOS上，当点击dock图标并且没有其他窗口打开时，
+    // 通常在应用程序中重新创建一个窗口
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
@@ -119,14 +320,13 @@ app.on('will-quit', () => {
   }
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+// 当所有窗口关闭时退出应用，除了在macOS上。在macOS上，
+// 应用程序及其菜单栏通常会保持活动状态，直到用户使用Cmd + Q显式退出
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+// 在此文件中，您可以包含应用程序特定的主进程代码的其余部分
+// 您也可以将它们放在单独的文件中，并在此处引入

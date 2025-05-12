@@ -269,11 +269,19 @@ async def shutdown_event():
         logger.error(f"清理资源时出错: {str(e)}")
 
 
-# API端点
+# API根端点
 @app.get("/")
-async def root():
-    """API根端点"""
-    return {"message": "沙粒控制系统API正在运行"}
+def root():
+    return {"message": "沙粒控制系统API服务器"}
+
+# 测试用hello接口
+@app.get("/hello")
+def hello():
+    return {
+        "message": "你好！这是一个测试接口",
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "成功"
+    }
 
 
 # API端点
@@ -954,5 +962,13 @@ async def stop_clean():
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import sys
+    
+    # 确保中文输出正常显示
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+    
+    print("启动沙粒控制系统API服务器，地址: 0.0.0.0:8000")
+    print("使用Ctrl+C停止服务器")
+    
+    uvicorn.run(app, host="127.0.0.1", port=8000)

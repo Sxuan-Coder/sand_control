@@ -234,6 +234,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 import {
   VideoCamera,
   Connection,
@@ -261,7 +262,8 @@ import api, {
   stopProcess,
   cleanSand as cleanSandApi,
   getDirectoryImages,
-  getImageUrl
+  getImageUrl,
+  testServerConnection
 } from '../api'
 import { number } from 'echarts'
 
@@ -350,6 +352,52 @@ export default {
 
     // 系统日志数据
     const systemLogs = ref([])
+
+    // 测试网络连接
+    const testBaiduConnection = async () => {
+      try {
+        addLog('正在测试网络连接...', 'info')
+
+        // 使用 IPC 通信测试网络连接
+        // 这种方法可以避免 CSP 限制
+        const result = await window.api.checkApiStatus()
+
+        if (result.success) {
+          ElMessage.success('网络连接正常')
+          addLog('网络连接正常', 'success')
+          return true
+        } else {
+          ElMessage.error(`网络连接异常: ${result.error || '未知错误'}`)
+          addLog(`网络连接异常: ${result.error || '未知错误'}`, 'error')
+          return false
+        }
+      } catch (error) {
+        ElMessage.error(`网络连接测试失败：${error.message}`)
+        addLog(`网络连接测试失败：${error.message}`, 'error')
+        return false
+      }
+    }
+
+    // 测试服务器连接
+    const checkServerConnection = async () => {
+      try {
+        const result = await testServerConnection()
+        if (result.success) {
+          ElMessage.success(result.message)
+          addLog('服务器连接成功', 'success')
+          return true
+        } else {
+          ElMessage.error(result.message)
+          addLog('服务器连接失败', 'error')
+          return false
+        }
+      } catch (error) {
+        ElMessage.error('服务器连接测试失败')
+        addLog('服务器连接测试失败', 'error')
+        console.error('服务器连接测试错误:', error)
+        return false
+      }
+    }
 
     // 方法
     const initSystem = async () => {
@@ -473,46 +521,66 @@ export default {
 
         // 从全局路径加载图片
         const globalResponse = await getDirectoryImages(globalImagesPath.value)
-        const globalFiles = globalResponse.data || []
+        // 适应新的数据结构，处理 success 属性
+        const globalFiles = globalResponse.success ? globalResponse.data || [] : []
+        console.log('全局图片数据:', globalResponse)
 
         // 从本地路径加载图片
         const localResponse = await getDirectoryImages(localImagesPath.value)
-        const localFiles = localResponse.data || []
+        // 适应新的数据结构，处理 success 属性
+        const localFiles = localResponse.success ? localResponse.data || [] : []
+        console.log('本地图片数据:', localResponse)
 
         // 处理全局图片
-        const globalImages = globalFiles.map((file) => {
-          // 从文件名中提取组号和照片号
-          // 文件名格式为 {组号}_{照片号}.jpg
-          const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || []
-          const group = fileNameMatch[1] ? parseInt(fileNameMatch[1]) : 1
-          const photo = fileNameMatch[2] ? parseInt(fileNameMatch[2]) : 1
+        // 检查 globalFiles 是否为数组
+        console.log('全局文件类型:', typeof globalFiles, Array.isArray(globalFiles))
 
-          return {
-            path: getImageUrl(file.path),
-            actualPath: file.path,
-            group: group,
-            photo: photo,
-            source: 'global',
-            time: new Date(file.modifiedTime).toLocaleTimeString()
-          }
-        })
+        let globalImages = []
+        if (Array.isArray(globalFiles)) {
+          globalImages = globalFiles.map((file) => {
+            // 从文件名中提取组号和照片号
+            // 文件名格式为 {组号}_{照片号}.jpg
+            const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || []
+            const group = fileNameMatch[1] ? parseInt(fileNameMatch[1]) : 1
+            const photo = fileNameMatch[2] ? parseInt(fileNameMatch[2]) : 1
+
+            return {
+              path: getImageUrl(file.path),
+              actualPath: file.path,
+              group: group,
+              photo: photo,
+              source: 'global',
+              time: new Date(file.modifiedTime).toLocaleTimeString()
+            }
+          })
+        } else {
+          console.warn('全局文件不是数组:', globalFiles)
+        }
 
         // 处理本地图片
-        const localImages = localFiles.map((file) => {
-          // 从文件名中提取组号和照片号
-          const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || []
-          const group = fileNameMatch[1] ? parseInt(fileNameMatch[1]) : 1
-          const photo = fileNameMatch[2] ? parseInt(fileNameMatch[2]) : 1
+        // 检查 localFiles 是否为数组
+        console.log('本地文件类型:', typeof localFiles, Array.isArray(localFiles))
 
-          return {
-            path: getImageUrl(file.path),
-            actualPath: file.path,
-            group: group,
-            photo: photo,
-            source: 'local',
-            time: new Date(file.modifiedTime).toLocaleTimeString()
-          }
-        })
+        let localImages = []
+        if (Array.isArray(localFiles)) {
+          localImages = localFiles.map((file) => {
+            // 从文件名中提取组号和照片号
+            const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || []
+            const group = fileNameMatch[1] ? parseInt(fileNameMatch[1]) : 1
+            const photo = fileNameMatch[2] ? parseInt(fileNameMatch[2]) : 1
+
+            return {
+              path: getImageUrl(file.path),
+              actualPath: file.path,
+              group: group,
+              photo: photo,
+              source: 'local',
+              time: new Date(file.modifiedTime).toLocaleTimeString()
+            }
+          })
+        } else {
+          console.warn('本地文件不是数组:', localFiles)
+        }
 
         // 合并和排序图片
         // 我们需要按照特定顺序排列:
@@ -760,7 +828,7 @@ export default {
 
     // 处理登出
     const handleLogout = () => {
-      ElMessageBox.confirm('确定要退出登录吗？', '退出提示', {
+      ElMessageBox.confirm('确定要退出登录吗？', '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
@@ -797,6 +865,9 @@ export default {
       // 添加初始日志
       addLog('系统启动完成，等待初始化...', 'info')
       addLog('正在检查设备连接状态...', 'info')
+
+      // 检测百度链接
+      testBaiduConnection()
 
       // 加载本地图片
       loadLocalImages()
@@ -974,6 +1045,14 @@ export default {
       }
     }
 
+    // 在组件挂载时检查服务器连接状态
+    onMounted(async () => {
+      // 检查服务器连接状态
+      await checkServerConnection()
+
+      // 其他初始化操作...
+    })
+
     return {
       // 状态
       isRunning,
@@ -1026,7 +1105,8 @@ export default {
       showReport,
       sandGradingReportDialogVisible,
       showSandGradingReport,
-      handleLogout
+      handleLogout,
+      checkServerConnection
     }
   }
 }
