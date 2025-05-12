@@ -108,10 +108,12 @@ function startPythonServer() {
 function createWindow() {
   // 创建浏览器窗口
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1900,
+    height: 1080,
     show: false,
+    title: '砂石级配实验监控平台',
     autoHideMenuBar: true,
+    // fullscreen: true, // 全屏
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
