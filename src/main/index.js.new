@@ -1,0 +1,188 @@
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { join } from 'path'
+import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { spawn } from 'child_process'
+import { dirname } from 'path'
+import icon from '../../resources/icon.png?asset'
+import axios from 'axios'
+
+// 存储Python进程的引用
+let pythonProcess = null
+
+// 启动Python服务器函数并返回Promise
+function startPythonServer() {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('使用独立沙粒API服务器，跳过内置服务器启动');
+      // 直接解析Promise，不启动Python进程
+      resolve(null);
+    } catch (error) {
+      console.error('启动Python服务器时出错:', error);
+      reject(error);
+    }
+  })
+}
+
+function createWindow() {
+  // 创建浏览器窗口
+  const mainWindow = new BrowserWindow({
+    width: 900,
+    height: 670,
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      webSecurity: false, // 关闭网络安全限制，允许跨域请求
+      allowRunningInsecureContent: true // 允许运行不安全的内容
+    }
+  })
+
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+  })
+
+  // 设置CSP头，允许连接到本地API服务器
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*"]
+      }
+    })
+  })
+
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  // 基于electron-vite cli的渲染器热模块替换(HMR)
+  // 在开发环境中加载远程URL，在生产环境中加载本地html文件
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
+
+// 当Electron完成初始化并准备创建浏览器窗口时将调用此方法
+// 某些API只能在此事件发生后使用
+app.whenReady().then(() => {
+  // 为Windows设置应用程序用户模型ID
+  electronApp.setAppUserModelId('com.electron')
+
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window)
+  })
+
+  // IPC测试
+  ipcMain.on('ping', () => console.log('pong'))
+  
+  // 处理网络请求
+  ipcMain.handle('fetch-data', async (event, url) => {
+    try {
+      console.log(`正在请求URL: ${url}`)
+      const response = await fetch(url)
+      const data = await response.text()
+      return { success: true, data }
+    } catch (error) {
+      console.error(`请求失败: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+  
+  // 创建 axios 实例用于 API 调用
+  const api = axios.create({
+    baseURL: 'http://127.0.0.1:8080',
+    timeout: 5000,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  // 通用 API 调用处理程序
+  ipcMain.handle('api-call', async (event, { endpoint, method, data, params }) => {
+    try {
+      console.log(`主进程 API 调用: ${method.toUpperCase()} ${endpoint}`)
+      let response
+      
+      switch (method.toLowerCase()) {
+        case 'get':
+          response = await api.get(endpoint, { params })
+          break
+        case 'post':
+          response = await api.post(endpoint, data)
+          break
+        case 'put':
+          response = await api.put(endpoint, data)
+          break
+        case 'delete':
+          response = await api.delete(endpoint, { params })
+          break
+        default:
+          throw new Error(`不支持的 HTTP 方法: ${method}`)
+      }
+      
+      return response.data
+    } catch (error) {
+      console.error(`API 调用失败 (${endpoint}): ${error.message}`)
+      throw error
+    }
+  })
+
+  // 检查服务器连接
+  async function checkServerConnection() {
+    try {
+      await api.get('/hello')
+      return true
+    } catch (error) {
+      console.error('服务器连接失败:', error)
+      return false
+    }
+  }
+
+  // 启动Python服务器并创建窗口
+  console.log('正在启动Python服务器...')
+  startPythonServer()
+    .then(() => {
+      // 创建窗口
+      createWindow()
+      
+      // 检查API服务器连接
+      return checkServerConnection()
+    })
+    .then(isConnected => {
+      if (!isConnected) {
+        console.error('无法连接到API服务器')
+      }
+    })
+    .catch(error => {
+      console.error('Python服务器启动失败:', error)
+      console.log('尽管Python服务器启动失败，仍然创建窗口...')
+      createWindow()
+    })
+
+  app.on('activate', function () {
+    // 在macOS上，当单击dock图标并且没有其他窗口打开时，通常会在应用程序中重新创建一个窗口
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+// 当所有窗口都被关闭时退出，除了在macOS上。在macOS上，应用程序和它们的菜单栏通常会一直保持活动状态，直到用户明确退出Cmd + Q
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
+  
+  // 如果Python进程正在运行，则终止它
+  if (pythonProcess) {
+    console.log('正在终止Python进程...')
+    pythonProcess.kill()
+    pythonProcess = null
+  }
+})
+
+// 在此文件中，你可以包含应用程序特定的主进程代码
+// 你也可以把它们放在单独的文件中并在这里请求它们
