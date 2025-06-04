@@ -57,7 +57,7 @@ class ProcessConfig(BaseModel):
     sand_total: float = 500
     once_count: float = 0.1
     start_group: int = None  # 改为可选参数，默认为None
-    photos_per_group: int = 5
+    photos_per_group: int = 1
 
 
 class CameraConfig(BaseModel):
@@ -99,6 +99,9 @@ system_status = {
     "is_running": False,
     "current_config": None,
     "start_time": None,
+    "current_group": 0,
+    "current_photo": 0,
+    "total_photos": 0,
     "elapsed_time": None,
     "current_group": None,
     "current_photo": None,
@@ -330,12 +333,18 @@ async def get_results():
 @app.get("/status")
 async def get_status():
     """获取系统状态"""
-    global system_status, process_start_time
+    global system_status, process_start_time, process_instance
 
-    # 如果系统正在运行，更新运行时间
+    # 如果系统正在运行，更新运行时间和进度
     if system_status["is_running"] and process_start_time:
         elapsed = time.time() - process_start_time
         system_status["elapsed_time"] = f"{elapsed:.2f}秒"
+        
+        # 从process_instance获取最新进度
+        if process_instance:
+            system_status["current_group"] = process_instance.current_group
+            system_status["current_photo"] = process_instance.current_photo
+            system_status["total_photos"] = process_instance.total_photos
 
     return system_status
 
@@ -372,9 +381,17 @@ async def open_light(process=Depends(get_process)):
 @app.post("/start")
 async def start_process(config: ProcessConfig, background_tasks: BackgroundTasks, process=Depends(get_process)):
     """启动流程"""
-    global is_running
+    global is_running, system_status
     if is_running:
         raise HTTPException(status_code=400, detail="系统已在运行中")
+    
+    # 初始化进度状态
+    system_status["current_group"] = 0
+    system_status["current_photo"] = 0
+    system_status["total_photos"] = 0
+    process.current_group = 0
+    process.current_photo = 0
+    process.total_photos = 0
 
     background_tasks.add_task(run_process, process, config)
     return {"status": "success", "message": "流程已启动"}
@@ -388,7 +405,24 @@ async def stop_process(process=Depends(get_process)):
         raise HTTPException(status_code=400, detail="系统未在运行")
 
     try:
-        process.close()  # 这会停止所有设备
+        # 首先调用停止流程方法
+        process.stop_process()
+        
+        # 重置进度状态
+        system_status["current_group"] = 0
+        system_status["current_photo"] = 0
+        system_status["total_photos"] = 0
+        process.current_group = 0
+        process.current_photo = 0
+        process.total_photos = 0
+        
+        # 等待一下让停止信号生效
+        import asyncio
+        await asyncio.sleep(1)
+        
+        # 然后关闭资源
+        process.close()
+        
         is_running = False
         system_status["is_running"] = False
         return {"status": "success", "message": "流程已停止"}
@@ -911,14 +945,31 @@ async def get_image_file(path: str):
         # 规范化路径，统一使用操作系统标准分隔符
         decoded_path = os.path.normpath(decoded_path)
         
+        # 基本路径安全检查
+        if not decoded_path or '..' in decoded_path:
+            raise HTTPException(status_code=400, detail="无效的文件路径")
+            
+        # 获取文件扩展名
+        file_ext = os.path.splitext(decoded_path)[1].lower()
+        if file_ext not in ['.jpg', '.jpeg', '.png', '.bmp']:
+            raise HTTPException(status_code=400, detail="不支持的文件类型")
+
         # 验证路径是否存在
         if not os.path.exists(decoded_path):
-            raise HTTPException(status_code=404, detail=f"图片文件不存在: {decoded_path}")
+            raise HTTPException(status_code=404, detail=f"图片文件不存在")
+            
+        # 验证是否是文件
+        if not os.path.isfile(decoded_path):
+            raise HTTPException(status_code=400, detail="请求的路径不是文件")
+        
+        # 获取正确的MIME类型
+        mime_type = 'image/jpeg' if file_ext in ['.jpg', '.jpeg'] else f'image/{file_ext[1:]}'
         
         # 返回文件
         return FileResponse(
-            decoded_path,
-            media_type=f"image/{os.path.splitext(decoded_path)[1][1:].lower().replace('jpg', 'jpeg')}"
+            path=decoded_path,
+            media_type=mime_type,
+            filename=os.path.basename(decoded_path)
         )
     except HTTPException:
         raise

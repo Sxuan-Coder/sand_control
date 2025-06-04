@@ -10,51 +10,75 @@ import json
 import cv2
 import numpy as np
 from datetime import datetime
+import traceback
 
-# Define paths for background models and images
-BACKGROUND_PATH = r"C:\Users\ASUS\Desktop\test"
-GLOBAL_IMAGES_PATH = r"F:\sand_data\test\global"
-LOCAL_IMAGES_PATH = r"F:\sand_data\test\local"
-RESULTS_PATH = r"C:\Users\ASUS\Desktop\SandControl\results"
+# 定义结果保存路径
+RESULTS_BASE_PATH = r"C:\Users\ASUS\Desktop\SandControl\sand-nb-master\src\main\python\results"
+RESULTS_GLOBAL_PATH = os.path.join(RESULTS_BASE_PATH, "global")
+RESULTS_LOCAL_PATH = os.path.join(RESULTS_BASE_PATH, "local")
+
+# 定义子文件夹
+SUBFOLDERS = ["original", "classified", "segmented"]
+
+# 创建所需目录
+os.makedirs(RESULTS_BASE_PATH, exist_ok=True)
+os.makedirs(RESULTS_GLOBAL_PATH, exist_ok=True)
+os.makedirs(RESULTS_LOCAL_PATH, exist_ok=True)
+
+# 创建子文件夹
+for folder in [RESULTS_GLOBAL_PATH, RESULTS_LOCAL_PATH]:
+    for subfolder in SUBFOLDERS:
+        os.makedirs(os.path.join(folder, subfolder), exist_ok=True)
+
+# Add project root to sys.path to allow for module imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+try:
+    from config.default_config import (
+        background_path as BACKGROUND_PATH,
+        main_input_image_path,
+        global_mm_per_pixel,
+        local_mm_per_pixel
+    )
+    
+    GLOBAL_IMAGES_PATH = os.path.join(main_input_image_path, "global")
+    LOCAL_IMAGES_PATH = os.path.join(main_input_image_path, "local")
+    
+    from zsh_image_handle import pictures_handle 
+    from background import read_backgrounds_single, read_backgrounds_mixture
+
+except ImportError as e:
+    print(f"Error importing configuration or modules: {e}")
+    sys.exit(1)
 
 # 指定背景模型文件名
 GLOBAL_BG_FILE = "G1.bmp"
 LOCAL_BG_FILE = "L1.bmp"
 
-# Create the results directory if it doesn't exist
-os.makedirs(RESULTS_PATH, exist_ok=True)
-
-# Define conversion factors (pixels to mm)
-GLOBAL_MM_PER_PIXEL = 0.0351  # Global view: 1 pixel = 0.0351mm
-LOCAL_MM_PER_PIXEL = 0.0066   # Local view: 1 pixel = 0.0066mm
-
-# 沙粒分类阈值 (单位: mm)
-# 调整为更合理的阈值，以便更好地分类沙粒
-# 全局视图阈值 (粒径由小到大)
+# 粒径阈值 (mm)
 GLOBAL_THRESHOLDS = [0.15, 0.3, 0.6, 1.18, 2.36]
-# 局部视图阈值 (粒径由小到大)
 LOCAL_THRESHOLDS = [0.15, 0.3, 0.6, 1.18, 2.36]
 
 # 可视化颜色
 COLORS = [
-    (0, 0, 255),    # Red <0.15mm
-    (0, 255, 0),    # Green 0.15-0.3mm
-    (255, 0, 0),    # Blue 0.3-0.6mm
-    (255, 255, 0),  # Cyan 0.6-1.18mm
-    (0, 255, 255),  # Yellow 1.18-2.36mm
-    (255, 0, 255)   # Purple >2.36mm
+    (0, 0, 255),    # Red 0.075~0.15
+    (0, 255, 0),    # Green 0.15~0.3
+    (255, 0, 0),    # Blue 0.3~0.6
+    (255, 255, 0),  # Cyan 0.6~1.18
+    (0, 255, 255),  # Yellow 1.18~2.36
+    (255, 0, 255)   # Purple 2.36~4.75
 ]
 
 def load_background_model(image_type):
-    """加载适当的背景模型"""
+    """加载背景模型"""
     try:
-        if image_type == "global":
-            bg_path = os.path.join(BACKGROUND_PATH, GLOBAL_BG_FILE)
-        else:  # local
-            bg_path = os.path.join(BACKGROUND_PATH, LOCAL_BG_FILE)
-            
+        bg_path = os.path.join(BACKGROUND_PATH, 
+                              GLOBAL_BG_FILE if image_type == "global" else LOCAL_BG_FILE)
         if not os.path.exists(bg_path):
-            print(f"Error: Background model file not found at {bg_path}")
+            print(f"Error: Background model not found at {bg_path}")
             return None
             
         bg_image = cv2.imread(bg_path)
@@ -65,124 +89,105 @@ def load_background_model(image_type):
         return None
 
 def process_image(image_path, background, image_type, debug=False):
-    """处理单个沙粒图像并检测轮廓"""
+    """处理单个图像"""
     try:
         print(f"Processing image: {image_path}")
+        img = cv2.imread(image_path)
+        if img is None:
+            return {"success": False, "error": "无法读取图像"}
+
+        mm_per_pixel = global_mm_per_pixel if image_type == "global" else local_mm_per_pixel
         
-        # 读取图像
-        image = cv2.imread(image_path)
-        if image is None:
-            print(f"Error: Could not read image {image_path}")
-            return {"success": False, "error": "Could not read image"}
-            
-        # 如果需要，将背景调整为与图像尺寸匹配
-        if image.shape != background.shape:
-            print(f"Resizing background to match image dimensions: {image.shape}")
-            background_resized = cv2.resize(background, (image.shape[1], image.shape[0]))
+        # 调整背景大小
+        if img.shape != background.shape:
+            background_resized = cv2.resize(background, (img.shape[1], img.shape[0]))
         else:
             background_resized = background
             
-        # 简单的背景减法
-        diff = cv2.absdiff(image, background_resized)
-        
-        # 转换为灰度
+        # 背景差分
+        diff = cv2.absdiff(img, background_resized)
         gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-        
-        # 应用自适应阈值而不是固定阈值
-        # 使用Otsu自动确定最佳阈值
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # 增强形态学处理以更好地清理图像
+
+        # 形态学处理
         kernel = np.ones((5, 5), np.uint8)
-        # 开运算去除小噪点
-        opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-        # 闭运算填充颗粒内部的小孔
+        opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=3)
         closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel, iterations=2)
         
-        # 在处理后的图像上查找轮廓
+        # 轮廓检测和过滤
         contours, _ = cv2.findContours(closing, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = [cnt for cnt in contours if (cv2.contourArea(cnt) > 200 and 
+                                              cv2.arcLength(cnt, True) > 30)]
         
-        # 提高轮廓过滤标准，去除更多噪点
-        min_area = 100 if image_type == "global" else 50  # 根据图像类型调整最小面积阈值
-        min_perimeter = 20 if image_type == "global" else 10  # 根据图像类型调整最小周长
+        # 创建结果图像
+        visualization = img.copy()  # 彩色分类图
+        segmented = np.zeros_like(img)  # 红色分割图
         
-        # 同时考虑面积和周长进行过滤
-        contours = [cnt for cnt in contours if (cv2.contourArea(cnt) > min_area and 
-                                              cv2.arcLength(cnt, True) > min_perimeter)]
-        
-        # 创建可视化图像
-        visualization = image.copy()
-        
-        # 根据图像类型设置转换因子和阈值
-        mm_per_pixel = GLOBAL_MM_PER_PIXEL if image_type == "global" else LOCAL_MM_PER_PIXEL
         thresholds = GLOBAL_THRESHOLDS if image_type == "global" else LOCAL_THRESHOLDS
-        
-        # 初始化结果和分类容器
         grade_statistics = [{"count": 0, "percentage": 0} for _ in range(6)]
         classified_contours = [[] for _ in range(6)]
-        short_list = []
-        long_list = []
-        area_list = []
-        volume_list = []
+        short_list, long_list, area_list, volume_list = [], [], [], []
         
         # 处理每个轮廓
         for contour in contours:
-            # 获取最小面积矩形
             rect = cv2.minAreaRect(contour)
             (x, y), (width, height), angle = rect
             
-            # 确保宽度是较长的尺寸
             if width < height:
                 width, height = height, width
                 
-            # 将像素尺寸转换为毫米
             width_mm = width * mm_per_pixel
             height_mm = height * mm_per_pixel
             
-            # 存储尺寸
             short_list.append(height_mm)
             long_list.append(width_mm)
             
-            # 计算面积
             area = cv2.contourArea(contour)
             area_list.append(area)
-            
-            # 简单的体积估计（面积 * 短轴）
             volume = area * height_mm
             volume_list.append(volume)
             
-            # 使用短轴长度(height_mm)来分类沙粒
-            # 默认为最大粒径等级(>2.36mm)
-            grade_index = 5
+            # 在分割图上绘制红色轮廓
+            cv2.drawContours(segmented, [contour], -1, (0, 0, 255), 2)
             
-            # 根据短轴长度判断沙粒等级
-            # 0: <0.15mm, 1: 0.15-0.3mm, 2: 0.3-0.6mm, 3: 0.6-1.18mm, 4: 1.18-2.36mm, 5: >2.36mm
+            # 分类
+            grade_index = 5
             for i, threshold in enumerate(thresholds):
                 if height_mm < threshold:
                     grade_index = i
                     break
                     
-            # 调试信息，帮助验证分类是否正确
             if debug:
-                print(f"Particle size: {height_mm:.4f}mm, classified as grade {grade_index}")
+                print(f"Particle size: {height_mm:.4f}mm, grade {grade_index}")
                     
-            # 更新统计信息
             grade_statistics[grade_index]["count"] += 1
             classified_contours[grade_index].append(contour)
         
         # 计算百分比
         total_particles = len(contours)
         for i in range(6):
-            grade_statistics[i]["percentage"] = grade_statistics[i]["count"] / total_particles if total_particles > 0 else 0
+            if total_particles > 0:
+                grade_statistics[i]["percentage"] = grade_statistics[i]["count"] / total_particles
         
-        # 在可视化图像上绘制轮廓
+        # 使用不同颜色绘制不同等级的轮廓（分类图）
         for i, contours_list in enumerate(classified_contours):
             cv2.drawContours(visualization, contours_list, -1, COLORS[i], 2)
             
-        # 保存可视化
-        vis_filename = f"vis_{image_type}_{os.path.basename(image_path).split('.')[0]}.png"
-        vis_path = os.path.join(RESULTS_PATH, vis_filename)
-        cv2.imwrite(vis_path, visualization)
+        # 保存各类结果图像
+        base_path = RESULTS_GLOBAL_PATH if image_type == "global" else RESULTS_LOCAL_PATH
+        base_filename = os.path.splitext(os.path.basename(image_path))[0]
+        
+        # 复制原图到original文件夹
+        original_path = os.path.join(base_path, "original", f"{base_filename}.png")
+        cv2.imwrite(original_path, img)
+        
+        # 保存分类图到classified文件夹
+        classified_path = os.path.join(base_path, "classified", f"{base_filename}.png")
+        cv2.imwrite(classified_path, visualization)
+        
+        # 保存分割图到segmented文件夹
+        segmented_path = os.path.join(base_path, "segmented", f"{base_filename}.png")
+        cv2.imwrite(segmented_path, segmented)
         
         return {
             "success": True,
@@ -193,137 +198,127 @@ def process_image(image_path, background, image_type, debug=False):
             "area_list": area_list,
             "volume_list": volume_list,
             "grade_statistics": grade_statistics,
-            "visualization_path": vis_filename,
-            "visualization": visualization,  # 添加实际的可视化图像
+            "original_path": original_path,
+            "classified_path": classified_path,
+            "segmented_path": segmented_path,
+            "visualization": visualization,
             "image_type": image_type,
             "mm_per_pixel": mm_per_pixel
         }
     except Exception as e:
-        import traceback
         traceback.print_exc()
-        return {
-            "success": False,
-            "image_path": image_path,
-            "error": str(e)
-        }
+        return {"success": False, "image_path": image_path, "error": str(e)}
 
 def process_images_in_directory(directory_path, image_type, debug=False):
     """处理目录中的所有图像"""
+    results = []
     print(f"Processing {image_type} images from {directory_path}")
     
-    # 加载背景模型
     background = load_background_model(image_type)
     if background is None:
-        return []
+        return results
     
-    # 获取图像文件
     try:
-        image_files = [f for f in os.listdir(directory_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))]
-        print(f"Found {len(image_files)} images in {directory_path}")
+        image_files = [f for f in os.listdir(directory_path) 
+                      if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))]
+        print(f"Found {len(image_files)} images")
         
-        if not image_files:
-            print(f"No image files found in {directory_path}")
-            return []
-        
-        # 处理每个图像
-        results = []
         for i, image_file in enumerate(image_files):
             print(f"Processing image {i+1}/{len(image_files)}: {image_file}")
             image_path = os.path.join(directory_path, image_file)
-            # 第一个图像开启调试模式，帮助验证分类是否正确
-            debug_mode = (i == 0)
-            result = process_image(image_path, background, image_type, debug=debug_mode)
+            result = process_image(image_path, background, image_type, debug=(i==0))
             
             if result["success"]:
-                # 格式化结果以匹配前端预期格式
-                formatted_result = {
+                results.append({
                     "image_path": image_path,
-                    "visualization_path": result["visualization_path"],
+                    "original_path": result["original_path"],
+                    "classified_path": result["classified_path"],
+                    "segmented_path": result["segmented_path"],
                     "contours_count": result["contours_count"],
                     "grade_statistics": result["grade_statistics"],
                     "success": True
-                }
-                
-                results.append(formatted_result)
+                })
             else:
-                # 处理失败，添加错误信息
                 results.append({
                     "image_path": image_path,
                     "success": False,
                     "error": result.get("error", "Unknown error")
                 })
-        
-        return results
     except Exception as e:
-        print(f"Error processing directory {directory_path}: {str(e)}")
-        return []
-
-def main():
-    """主函数，处理沙粒图像"""
-    print("开始处理沙粒图像...")
-    
-    # 显示使用的背景模型
-    global_bg_path = os.path.join(BACKGROUND_PATH, GLOBAL_BG_FILE)
-    local_bg_path = os.path.join(BACKGROUND_PATH, LOCAL_BG_FILE)
-    print(f"使用全局背景模型: {global_bg_path}")
-    print(f"使用局部背景模型: {local_bg_path}")
-    print()
-    
-    # 处理全局视图图像
-    global_results = []
-    if os.path.exists(GLOBAL_IMAGES_PATH):
-        print(f"处理全局视图图像: {GLOBAL_IMAGES_PATH}")
-        global_results = process_images_in_directory(GLOBAL_IMAGES_PATH, "global")
-    else:
-        print(f"全局视图图像目录不存在: {GLOBAL_IMAGES_PATH}")
-    
-    # 处理局部视图图像
-    local_results = []
-    if os.path.exists(LOCAL_IMAGES_PATH):
-        print(f"\n处理局部视图图像: {LOCAL_IMAGES_PATH}")
-        local_results = process_images_in_directory(LOCAL_IMAGES_PATH, "local")
-    else:
-        print(f"局部视图图像目录不存在: {LOCAL_IMAGES_PATH}")
-    
-    # 汇总统计信息
-    global_success_count = sum(1 for r in global_results if r["success"])
-    local_success_count = sum(1 for r in local_results if r["success"])
-    
-    global_particles_count = sum(r["contours_count"] for r in global_results if r["success"])
-    local_particles_count = sum(r["contours_count"] for r in local_results if r["success"])
-    
-    print("\n处理摘要:")
-    print(f"全局图像: {global_success_count}/{len(global_results)} 成功处理")
-    print(f"局部图像: {local_success_count}/{len(local_results)} 成功处理")
-    print(f"总颗粒数: 全局={global_particles_count}, 局部={local_particles_count}")
-    
-    # 创建结果JSON
-    results = {
-        "global_results": global_results,
-        "local_results": local_results,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "summaryStats": {
-            "global": {
-                "totalImages": len(global_results),
-                "successfulImages": global_success_count,
-                "totalParticles": global_particles_count
-            },
-            "local": {
-                "totalImages": len(local_results),
-                "successfulImages": local_success_count,
-                "totalParticles": local_particles_count
-            }
-        }
-    }
-    
-    # 保存结果到JSON文件
-    results_file = os.path.join(RESULTS_PATH, "processing_results.json")
-    with open(results_file, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    print(f"结果已保存到 {results_file}")
+        print(f"读取目录时出错: {e}")
     
     return results
+
+def main():
+    """主函数"""
+    try:
+        print("开始处理沙粒图像...")
+        
+        # 检查背景模型
+        for bg_file, bg_type in [(GLOBAL_BG_FILE, "global"), (LOCAL_BG_FILE, "local")]:
+            bg_path = os.path.join(BACKGROUND_PATH, bg_file)
+            if not os.path.exists(bg_path):
+                print(f"错误: {bg_type}背景模型不存在: {bg_path}")
+                return
+        
+        # 处理图像
+        global_results = []
+        local_results = []
+        
+        if os.path.exists(GLOBAL_IMAGES_PATH):
+            global_results = process_images_in_directory(GLOBAL_IMAGES_PATH, "global")
+        else:
+            print(f"警告: 全局图像目录不存在: {GLOBAL_IMAGES_PATH}")
+            
+        if os.path.exists(LOCAL_IMAGES_PATH):
+            local_results = process_images_in_directory(LOCAL_IMAGES_PATH, "local")
+        else:
+            print(f"警告: 局部图像目录不存在: {LOCAL_IMAGES_PATH}")
+        
+        # 计算统计数据
+        global_success = sum(1 for r in global_results if r.get("success", False))
+        local_success = sum(1 for r in local_results if r.get("success", False))
+        global_particles = sum(r.get("contours_count", 0) for r in global_results if r.get("success", False))
+        local_particles = sum(r.get("contours_count", 0) for r in local_results if r.get("success", False))
+        
+        # 保存结果
+        all_results = {
+            "global": global_results,
+            "local": local_results,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "summaryStats": {
+                "global": {
+                    "totalImages": len(global_results),
+                    "successfulImages": global_success,
+                    "totalParticles": global_particles
+                },
+                "local": {
+                    "totalImages": len(local_results),
+                    "successfulImages": local_success,
+                    "totalParticles": local_particles
+                }
+            }
+        }
+        
+        results_file = os.path.join(RESULTS_BASE_PATH, "processing_results.json")
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(all_results, f, indent=2, ensure_ascii=False)
+        
+        print("\n处理摘要:")
+        print(f"全局图像: {global_success}/{len(global_results)} 成功处理")
+        print(f"局部图像: {local_success}/{len(local_results)} 成功处理")
+        print(f"总颗粒数: 全局={global_particles}, 局部={local_particles}")
+        print(f"\n结果保存位置:")
+        print(f"- JSON文件: {results_file}")
+        print(f"- 全局图像结果: {RESULTS_GLOBAL_PATH}")
+        print(f"- 局部图像结果: {RESULTS_LOCAL_PATH}")
+        
+        return all_results
+        
+    except Exception as e:
+        traceback.print_exc()
+        print(f"处理图像时出错: {str(e)}")
+        return []
 
 if __name__ == "__main__":
     main()

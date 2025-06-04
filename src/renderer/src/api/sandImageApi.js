@@ -4,18 +4,23 @@ import axios from 'axios'
 const baseURL = 'http://localhost:8000'
 
 /**
- * 获取沙粒分析结果
- * @returns {Promise} 返回分析结果数据
+ * 获取沙粒图像处理结果
+ * @returns {Promise<Object>} 处理结果数据
  */
 export const getProcessingResults = async () => {
   try {
-    const response = await axios.get(`${baseURL}/results`)
-    return response.data
-  } catch (error) {
-    if (error.response?.status === 404) {
-      throw new Error('未找到沙粒分析结果数据')
+    console.log('正在获取沙粒分析结果...');
+    const response = await axios.get(`${baseURL}/results`);
+    
+    if (response.data) {
+      console.log('成功获取沙粒分析结果:', response.data);
+      return response.data;
+    } else {
+      throw new Error('无效的处理结果数据');
     }
-    throw new Error('获取沙粒分析结果失败: ' + (error.response?.data?.error || error.message))
+  } catch (error) {
+    console.error('获取沙粒分析结果失败:', error);
+    throw error;
   }
 }
 

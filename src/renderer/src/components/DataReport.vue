@@ -32,7 +32,7 @@
             打印报表
           </el-button>
         </el-button-group>
-        <!-- 移除全局/局部切换按钮 -->
+     
       </div>
     </div>
 
@@ -123,7 +123,7 @@
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="MX值对比" name="mx">
+        <!-- <el-tab-pane label="MX值对比" name="mx">
           <div
             class="chart-container mb-5 border border-blue-100 rounded-lg shadow-sm bg-white p-4"
           >
@@ -146,7 +146,7 @@
               <el-table-column prop="loss" label="Loss (%)" />
             </el-table>
           </div>
-        </el-tab-pane>
+        </el-tab-pane> -->
 
         <el-tab-pane label="粒径分布" name="distribution">
           <div

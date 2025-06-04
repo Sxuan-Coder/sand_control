@@ -2,12 +2,12 @@ from  samples_labels import LABELS
 
 # 像素到毫米的转换因子
 global_mm_per_pixel = 0.0351  # 全局视图: 1像素 = 0.0351mm
-local_mm_per_pixel = 0.00351  # 局部视图: 1像素 = 0.00351mm
+local_mm_per_pixel = 0.0066   # 局部视图: 1像素 = 0.0066mm
 
 # 通信配置
 USRIO_PORT = 50007  # 有人设备端口号
 WGD_PORT: int = 1000  # 振动盘端口号
-WGD_IP = "192.168.1.88"
+WGD_IP = "192.168.18.4"
 OUT_SAND = '00'  # 有人控制序号
 BAMPER = '02'
 

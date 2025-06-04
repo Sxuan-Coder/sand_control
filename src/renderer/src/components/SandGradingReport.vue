@@ -7,7 +7,7 @@
           <el-button
             type="primary"
             size="small"
-            @click="generateRandomData"
+            @click="fetchSandData"
             class="bg-blue-600 hover:bg-blue-700"
           >
             <el-icon><Refresh /></el-icon>
@@ -46,14 +46,8 @@
         <div class="flex items-center">
           <span class="text-sm font-bold mr-2 text-gray-700">报告编号: {{ reportNumber }}</span>
           <!-- 二维码 -->
-          <div
-            class="w-10 h-10 bg-white flex items-center justify-center border border-gray-300 rounded-sm"
-          >
-            <img
-              :src="`https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${reportNumber}`"
-              alt="报告二维码"
-              class="w-full h-full"
-            />
+          <div class="w-10 h-10 bg-white flex items-center justify-center border border-gray-300 rounded-sm">
+            <qrcode-vue3 :value="reportNumber" :width="40" :height="40" :qr-options="{ errorCorrectionLevel: 'M' }" />
           </div>
         </div>
       </div>
@@ -334,7 +328,7 @@
           </div>
           <span class="text-xs">{{ reportNumber }}</span>
         </div>
-        <p class="text-xs text-gray-500">2023 ICDIO检验中心</p>
+        <p class="text-xs text-gray-500">2025 ICDIO检验中心</p>
       </div>
     </div>
   </div>
@@ -348,6 +342,9 @@ import * as echarts from 'echarts'
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 import { sandImageApi } from '../api'
+import { getProcessingResults } from '../api/sandImageApi'
+import chatWithXfyun from '../api/xfyunApi.js'
+import QrcodeVue3 from 'qrcode-vue3'
 
 export default {
   name: 'SandGradingReport',
@@ -355,7 +352,8 @@ export default {
     ElProgress,
     Refresh,
     Printer,
-    Picture
+    Picture,
+    QrcodeVue3
   },
   setup() {
     // 基础数据
@@ -497,52 +495,36 @@ export default {
         // 细粉含量
         const fineContent = reportData.value.percentages[0].toFixed(2)
 
-        // 构建提示词
-        const prompt = `
-作为一名专业的砂石级配分析专家，请根据以下机制砂级配数据进行分析并给出专业建议：
-
-1. 细度模数：${fm}，砂类型：${sandType}
-2. 粒径分布数据（百分比）：
-   - <0.075mm: ${reportData.value.percentages[0].toFixed(2)}%
-   - 0.075~0.15mm: ${reportData.value.percentages[1].toFixed(2)}%
-   - 0.15~0.3mm: ${reportData.value.percentages[2].toFixed(2)}%
-   - 0.3~0.6mm: ${reportData.value.percentages[3].toFixed(2)}%
-   - 0.6~1.18mm: ${reportData.value.percentages[4].toFixed(2)}%
-   - 1.18~2.36mm: ${reportData.value.percentages[5].toFixed(2)}%
-   - 2.36~4.75mm: ${reportData.value.percentages[6].toFixed(2)}%
-3. 中间粒级(0.3~2.36mm)含量：${midSizeContentStr}%
-4. 细粉含量(<0.075mm)：${fineContent}%
-
-请提供以下三部分内容：
-1. 分析结论：对当前级配特点的简要总结，包括细度模数是否符合砂类型范围、粒径分布特征等。
-2. 优化建议：针对当前级配提出3点具体改进建议，包括如何调整各粒径含量以优化级配。
-3. 应用适宜性：说明当前级配的机制砂适合应用的混凝土类型和工程场景。
-
-请确保回答专业、简洁，每部分不超过100字。回答格式为JSON，包含conclusion、optimizationSuggestions（数组）和applicationSuitability三个字段。
-`
-
-        // 调用API获取AI建议
-        const response = await chatWithXfyun(prompt)
+        // 准备体积分布数据
+        const volumeDistribution = reportData.value.categories.map((category, index) => ({
+          size: category,
+          percentage: reportData.value.percentages[index].toFixed(2)
+        }))
 
         try {
-          // 尝试解析JSON
-          const aiResponse = JSON.parse(response)
+          // 调用讯飞星火API
+          const aiResponse = await chatWithXfyun({
+            fineModulus: fm,
+            sandType,
+            midSizeContent: midSizeContentStr,
+            fineContent,
+            volumeDistribution
+          })
+
+          // 更新AI建议
           aiRecommendation.value = {
             conclusion: aiResponse.conclusion || '无法获取分析结论',
             optimizationSuggestions: aiResponse.optimizationSuggestions || ['无法获取优化建议'],
             applicationSuitability: aiResponse.applicationSuitability || '无法获取应用适宜性分析'
           }
-        } catch (parseError) {
-          console.error('解析AI响应失败:', parseError)
-
-          // 如果解析失败，使用本地生成的建议
+        } catch (error) {
+          console.error('调用讯飞星火API失败:', error)
+          // 使用本地生成的建议作为备选
           generateLocalAIRecommendation()
         }
       } catch (error) {
         console.error('获取AI建议失败:', error)
-        ElMessage.error('获取AI建议失败，将使用本地生成的建议')
-
-        // 如果API调用失败，使用本地生成的建议
+        // 使用本地生成的建议作为备选
         generateLocalAIRecommendation()
       } finally {
         // 隐藏加载状态
@@ -891,60 +873,100 @@ export default {
       });
 
       try {
-        const analysisParams = {
-          view: 'global',
-          gradeNames: [0.075, 0.15, 0.3, 0.6, 1.18, 2.36],
-          gradeEnabled: [1, 1, 1, 1, 1, 1],
-          volume_corrections: [1, 1, 1, 1, 1, 1]
+        // 使用 getProcessingResults 获取沙粒图像处理结果
+        const result = await getProcessingResults();
+        
+        // 确认获取到有效数据
+        if (!result || !result.global || result.global.length === 0) {
+          throw new Error('未获取到有效的沙粒分析结果');
+        }
+        
+        // 统计颗粒分布并计算体积占比
+        // 1. 初始化各粒径区间的颗粒计数和体积
+        const sizeRanges = [
+          { min: 0, max: 0.075 },
+          { min: 0.075, max: 0.15 },
+          { min: 0.15, max: 0.3 },
+          { min: 0.3, max: 0.6 },
+          { min: 0.6, max: 1.18 },
+          { min: 1.18, max: 2.36 },
+          { min: 2.36, max: 4.75 }
+        ];
+        
+        let volumeByRange = Array(sizeRanges.length).fill(0);
+        let totalVolume = 0;
+        
+        // 2. 遍历所有成功处理的图片，计算真实体积分布
+        result.global.forEach(imageResult => {
+          if (imageResult.success && imageResult.grade_statistics) {
+            // 遍历每个粒级的统计数据
+            imageResult.grade_statistics.forEach((grade, index) => {
+              if (index < volumeByRange.length) {
+                // 使用粒级中值作为代表直径计算体积
+                const midDiameter = (sizeRanges[index].min + sizeRanges[index].max) / 2;
+                const radius = midDiameter / 2;
+                const particleVolume = (4/3) * Math.PI * Math.pow(radius, 3);
+                const gradeVolume = grade.count * particleVolume;
+                
+                volumeByRange[index] += gradeVolume;
+                totalVolume += gradeVolume;
+              }
+            });
+          }
+        });
+        
+        // 3. 计算体积百分比
+        const percentages = volumeByRange.map(volume => 
+          totalVolume > 0 ? (volume / totalVolume * 100) : 0
+        );
+        
+        // 4. 计算累计百分比
+        const cumulativeValues = [];
+        let cumulative = 0;
+        percentages.forEach(percentage => {
+          cumulative += percentage;
+          cumulativeValues.push(parseFloat(cumulative.toFixed(2)));
+        });
+
+        // 5. 更新报告数据
+        reportData.value = {
+          categories: [
+            '<0.075',
+            '0.075~0.15',
+            '0.15~0.3',
+            '0.3~0.6',
+            '0.6~1.18',
+            '1.18~2.36',
+            '2.36~4.75'
+          ],
+          percentages: percentages.map(p => parseFloat(p.toFixed(2))),
+          cumulative: cumulativeValues
         };
 
-        const result = await sandImageApi.analyzeSandData(analysisParams);
+        // 更新细度模数
+        calculateFineModulus();
+        
+        // 更新报告编号
+        reportNumber.value = `ICDIO-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000)}`;
+        
+        // 更新当前日期时间
+        const now = new Date();
+        currentDateTime.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        
+        // 生成AI建议
+        await generateAIRecommendation();
 
-        // 转换数据格式以匹配我们的数据结构
-        if (result.distribution && result.distribution.length > 0) {
-          const percentages = result.distribution.map(item => item.percentage);
-          const cumulativeValues = [];
-          let cumulative = 0;
-          
-          percentages.forEach(percentage => {
-            cumulative += percentage;
-            cumulativeValues.push(parseFloat(cumulative.toFixed(2)));
-          });
+        // 重新渲染图表
+        nextTick(() => {
+          if (pieChart) {
+            initPieChart();
+          }
+          if (lineChart && showLineChart.value) {
+            initLineChart();
+          }
+        });
 
-          reportData.value = {
-            categories: [
-              '<0.075',
-              '0.075~0.15',
-              '0.15~0.3',
-              '0.3~0.6',
-              '0.6~1.18',
-              '1.18~2.36',
-              '2.36~4.75'
-            ],
-            percentages,
-            cumulative: cumulativeValues
-          };
-
-          // 更新细度模数
-          calculateFineModulus();
-          
-          // 生成AI建议
-          await generateAIRecommendation();
-
-          // 重新渲染图表
-          nextTick(() => {
-            if (pieChart) {
-              initPieChart();
-            }
-            if (lineChart && showLineChart.value) {
-              initLineChart();
-            }
-          });
-
-          ElMessage.success('数据加载成功');
-        } else {
-          throw new Error('API返回的数据格式不正确');
-        }
+        ElMessage.success('数据加载成功');
       } catch (error) {
         console.error('获取沙粒分析数据失败:', error);
         ElMessage.error(`获取数据失败: ${error.message || '未知错误'}`);
@@ -1054,6 +1076,7 @@ export default {
       aiRecommendation,
       aiLoading,
       generateRandomData,
+      fetchSandData,
       exportPDF,
       exportAsImage
     }

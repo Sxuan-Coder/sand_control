@@ -146,6 +146,32 @@ function createWindow() {
   }
 }
 
+// 添加ipcMain处理程序
+ipcMain.handle('get-app-path', () => {
+  return app.getAppPath()
+})
+
+ipcMain.handle('check-file-exists', async (event, filePath) => {
+  try {
+    await fs.access(filePath, fs.constants.F_OK)
+    return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('read-file', async (event, filePath) => {
+  try {
+    console.log('尝试读取文件:', filePath)
+    const data = await fs.readFile(filePath)
+    console.log('文件读取成功，大小:', data.length)
+    return data
+  } catch (error) {
+    console.error('读取文件出错:', error)
+    return null
+  }
+})
+
 // 当Electron完成初始化并准备创建浏览器窗口时将调用此方法
 // 某些API只能在此事件发生后使用
 app.whenReady().then(() => {

@@ -135,7 +135,7 @@ class CameraControl:
 
     # 捕获图像
     def capture_images(self, base_path, count):
-        """捕获图像并保存"""
+        """捕获图像并保存，返回拍摄的图片路径列表"""
         try:
             # 确保目录存在
             for folder_name in ["global", "local"]:
@@ -150,6 +150,7 @@ class CameraControl:
             sync_event = threading.Event()
             
             futures = []
+            captured_image_paths = []
             
             # 获取图像数据并提交到线程池，确保同步拍摄
             def prepare_capture(cam_index):
@@ -157,7 +158,12 @@ class CameraControl:
                 # 等待同步事件，确保所有相机线程准备就绪
                 sync_event.wait()
                 # 开始捕获
-                return self._capture_single_camera(cam_index, self.cameras[cam_index], base_path, count)
+                self._capture_single_camera(cam_index, self.cameras[cam_index], base_path, count)
+                
+                # 构建图片路径
+                folder_name = "global" if cam_index == 1 else "local"  # 修复local和global的对应关系
+                image_path = f"{base_path}/{folder_name}/{count}.jpg"
+                return image_path
             
             # 提交所有捕获任务到线程池
             for i in range(len(self.cameras)):
@@ -167,15 +173,28 @@ class CameraControl:
             # 设置同步事件，触发所有相机同时开始捕获
             sync_event.set()
             
-            # 等待所有捕获操作完成
+            # 等待所有捕获操作完成并收集图片路径
             for future in futures:
-                future.result()
+                image_path = future.result()
+                if image_path:
+                    captured_image_paths.append(image_path)
 
-            return True
+            # 等待图片保存完成（给保存线程一些时间）
+            time.sleep(0.8)
+            
+            # 返回实际存在的图片路径
+            existing_paths = []
+            for path in captured_image_paths:
+                if os.path.exists(path):
+                    existing_paths.append(path)
+                else:
+                    print(f"警告：图片文件不存在: {path}")
+            
+            return existing_paths if existing_paths else None
 
         except Exception as e:
             print(f"图像捕获失败: {str(e)}")
-            return False
+            return None
 
     def _capture_single_camera(self, cam_index, cam, base_path, count):
         """处理单个相机的图像捕获"""
@@ -219,7 +238,7 @@ class CameraControl:
                 
                 try:
                     # 根据相机索引选择不同的文件夹名称
-                    folder_name = "local" if cam_index == 1 else "global"
+                    folder_name = "global" if cam_index == 1 else "local"  # 修复local和global的对应关系
                     file_path = f"{base_path}/{folder_name}/{count}"
                     
                     # 确保目录存在

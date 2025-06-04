@@ -111,6 +111,28 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 }
+electron.ipcMain.handle("get-app-path", () => {
+  return electron.app.getAppPath();
+});
+electron.ipcMain.handle("check-file-exists", async (event, filePath) => {
+  try {
+    await fs.access(filePath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("read-file", async (event, filePath) => {
+  try {
+    console.log("尝试读取文件:", filePath);
+    const data = await fs.readFile(filePath);
+    console.log("文件读取成功，大小:", data.length);
+    return data;
+  } catch (error) {
+    console.error("读取文件出错:", error);
+    return null;
+  }
+});
 electron.app.whenReady().then(() => {
   utils.electronApp.setAppUserModelId("com.electron");
   electron.app.on("browser-window-created", (_, window) => {

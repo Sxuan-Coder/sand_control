@@ -27,6 +27,6 @@ body {
 
 .app-container {
   height: 100%;
-  padding: 20px;
+  padding: 10px;
 }
 </style>

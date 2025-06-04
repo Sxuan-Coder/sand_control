@@ -146,38 +146,6 @@
             </div>
           </div>
 
-          <div class="feeding-section">
-            <h2>给料状态</h2>
-            <div class="chart-container">
-              <feeding-chart :data="feedingData" />
-            </div>
-          </div>
-        </div>
-
-        <div class="bottom-row">
-          <div class="photos-section">
-            <h2>最新照片</h2>
-            <div class="photo-grid">
-              <div v-for="(photo, index) in latestPhotos" :key="index" class="photo-item">
-                <div class="photo-placeholder" v-if="!photo.path">
-                  <el-icon><Picture /></el-icon>
-                </div>
-                <div class="photo-image" v-else>
-                  <img
-                    :src="photo.path"
-                    alt="实验照片"
-                    @error="handleImageError"
-                    @load="handleImageLoad"
-                  />
-                </div>
-                <div class="photo-info">
-                  <span>组{{ photo.group }} - 照片{{ photo.photo }}</span>
-                  <span>{{ photo.time }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div class="console-section">
             <h2>控制台监控</h2>
             <div class="console-container">
@@ -204,6 +172,51 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="bottom-row">
+          <div class="photos-section" style="margin-top: 50px;">
+            <h2>最新照片</h2>
+            <div class="photo-grid">
+              <div v-for="(photo, index) in latestPhotos" :key="index" class="photo-item">
+                <div class="photo-placeholder" v-if="!photo.path">
+                  <el-icon><Picture /></el-icon>
+                </div>
+                <div class="photo-image" v-else>
+                  <img
+                    :src="photo.path"
+                    alt="实验照片"
+                    @error="handleImageError"
+                    @load="handleImageLoad"
+                  />
+                </div>
+                <div class="photo-info">
+                  <span>组{{ photo.group }} - 照片{{ photo.photo }}</span>
+                  <span>{{ photo.time }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 暂时注释给料状态
+          <div class="feeding-section">
+            <h2>给料状态</h2>
+            <div class="chart-container">
+              <feeding-chart :data="feedingData" />
+            </div>
+          </div>
+          -->
+          <div class="section-container">
+              <div class="section-header" style="margin-top: 50px;">
+                  <h3>设备模型</h3>
+              </div>
+              <div style="height: 450px">
+                  <EquipmentModel />
+              </div>
+              <div class="progress-bar">
+                  <div class="progress" :style="{ width: modelProgress + '%' }"></div>
+              </div>
           </div>
         </div>
       </div>
@@ -265,7 +278,12 @@ import api, {
   getImageUrl,
   testServerConnection
 } from '../api'
-import { number } from 'echarts'
+import EquipmentModel from '../components/EquipmentModel.vue'
+
+// 获取API基础URL
+const API_BASE_URL = process.env.NODE_ENV === 'development' 
+  ? 'http://localhost:8000' 
+  : window.location.origin;
 
 export default {
   name: 'Dashboard',
@@ -282,6 +300,7 @@ export default {
     Picture,
     Camera,
     VideoPlay,
+    EquipmentModel,
     Delete,
     Download,
     DataAnalysis,
@@ -309,6 +328,12 @@ export default {
     const elapsedTime = ref(0)
     const feedingData = ref([])
 
+    // 计算模型进度
+    const modelProgress = computed(() => {
+      if (!totalGroups.value) return 0
+      return Math.round((completedGroups.value / totalGroups.value) * 100)
+    })
+
     // 图片数据
     const latestPhotos = ref([
       { path: '', group: 0, photo: 0, time: '' },
@@ -322,7 +347,7 @@ export default {
     const localImagesPath = ref('')
 
     // 图片刷新间隔（毫秒）
-    const imageRefreshInterval = ref(5000)
+    const imageRefreshInterval = ref(2000)
 
     // 当前显示的图片索引
     const currentImageIndex = ref(0)
@@ -340,14 +365,12 @@ export default {
     const reportDialogVisible = ref(false)
     const sandGradingReportDialogVisible = ref(false)
 
+    // 实验进度计算
     const experimentProgress = computed(() => {
-      const totalPhotos = totalGroups.value * photosPerGroup.value
-      const completedPhotos = completedGroups.value * photosPerGroup.value + currentPhoto.value
-
-      if (totalPhotos > 0) {
-        return Math.round((completedPhotos / totalPhotos) * 100)
-      }
-      return 0
+      const totalPhotos = totalGroups.value * photosPerGroup.value;
+      const completedPhotos = completedGroups.value * photosPerGroup.value + currentPhoto.value;
+      // 确保进度不会超过100%
+      return Math.min(Math.floor((completedPhotos / totalPhotos) * 100), 100);
     })
 
     // 系统日志数据
@@ -372,8 +395,7 @@ export default {
           return false
         }
       } catch (error) {
-        ElMessage.error(`网络连接测试失败：${error.message}`)
-        addLog(`网络连接测试失败：${error.message}`, 'error')
+       
         return false
       }
     }
@@ -445,7 +467,7 @@ export default {
         startLoading.value = true
         await startProcess({
           base_path: dataPath.value,
-          start_group: totalGroups.value,
+          start_group: 1, 
           photos_per_group: photosPerGroup.value,
           once_count: feedingAmount.value
         })
@@ -495,13 +517,15 @@ export default {
       const now = new Date()
       // 模拟更真实的给料波动
       const baseValue = feedingAmount.value
+      // 使用时间因子生成相似波形
       const time = Date.now() / 1000
-      // 使用多个正弦波叠加制造更自然的波动
-      const wave1 = Math.sin(time) * 0.2
-      const wave2 = Math.sin(time * 2) * 0.1
-      const wave3 = Math.sin(time * 0.5) * 0.15
-      const noise = (Math.random() - 0.5) * 0.1
-      const value = baseValue + wave1 + wave2 + wave3 + noise
+      // 使用正弦波作为基础，加入小幅度随机波动
+      const amplitude = 0.2 // 波动幅度
+      const frequency = 0.5 // 频率
+      const baseWave = Math.sin(time * frequency) * amplitude
+      // 添加小幅度随机波动，保持波形相似性
+      const noise = (Math.random() - 0.5) * 0.05
+      const value = baseValue + baseWave + noise
 
       feedingData.value.push({
         time: now.toLocaleTimeString(),
@@ -515,114 +539,109 @@ export default {
     // 加载本地图片
     const loadLocalImages = async () => {
       try {
-        // 更新图片路径 - 使用正确的路径格式
-        globalImagesPath.value = `${dataPath.value}/global`
-        localImagesPath.value = `${dataPath.value}/local`
+        // console.log('开始加载本地图片...');
         
-        // 从全局路径加载图片
-        const globalResponse = await getDirectoryImages(globalImagesPath.value)
-        const globalFiles = globalResponse.data || []
+        // 更新图片路径
+        globalImagesPath.value = `${dataPath.value}/global`;
+        localImagesPath.value = `${dataPath.value}/local`;
         
-        // 从本地路径加载图片
-        const localResponse = await getDirectoryImages(localImagesPath.value)
-        const localFiles = localResponse.data || []
+        // 创建Promise数组，同时请求global和local图片
+        const [globalResponse, localResponse] = await Promise.all([
+          getDirectoryImages(globalImagesPath.value),
+          getDirectoryImages(localImagesPath.value)
+        ]);
+        
+        const globalFiles = globalResponse.data || [];
+        const localFiles = localResponse.data || [];
+        
+        // console.log(`找到全局图片: ${globalFiles.length}张, 本地图片: ${localFiles.length}张`);
         
         // 处理全局图片
         const globalImages = globalFiles.map(file => {
-          // 从文件名中提取组号和照片号
-          // 文件名格式为 {组号}_{照片号}.jpg
-          const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || []
-          const group = fileNameMatch[1] ? parseInt(fileNameMatch[1]) : 1
-          const photo = fileNameMatch[2] ? parseInt(fileNameMatch[2]) : 1
-          
+          const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || [];
           return {
-            path: getImageUrl(file.path),
+            path: file.path,
             actualPath: file.path,
-            group: group,
-            photo: photo,
+            group: parseInt(fileNameMatch[1]) || 0,
+            photo: parseInt(fileNameMatch[2]) || 0,
             source: 'global',
-            time: new Date(file.modifiedTime).toLocaleTimeString()
-          }
-        })
+            time: file.modifiedTime
+          };
+        }).filter(img => img.group > 0 && img.photo > 0);
         
         // 处理本地图片
         const localImages = localFiles.map(file => {
-          // 从文件名中提取组号和照片号
-          const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || []
-          const group = fileNameMatch[1] ? parseInt(fileNameMatch[1]) : 1
-          const photo = fileNameMatch[2] ? parseInt(fileNameMatch[2]) : 1
-          
+          const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || [];
           return {
-            path: getImageUrl(file.path),
+            path: file.path,
             actualPath: file.path,
-            group: group,
-            photo: photo,
+            group: parseInt(fileNameMatch[1]) || 0,
+            photo: parseInt(fileNameMatch[2]) || 0,
             source: 'local',
-            time: new Date(file.modifiedTime).toLocaleTimeString()
-          }
-        })
+            time: file.modifiedTime
+          };
+        }).filter(img => img.group > 0 && img.photo > 0);
         
-        // 合并和排序图片
-        // 我们需要按照特定顺序排列:
-        // 1. 先按组号排序
-        // 2. 对于相同组号，按照照片号排序
-        // 3. 对于相同组号和照片号，按照global/local顺序排列
-        
-        // 创建一个映射来存储每个组和照片的global和local图片
-        const imageMap = new Map()
-        
-        // 处理全局图片
-        globalImages.forEach(img => {
-          const key = `${img.group}_${img.photo}`
-          if (!imageMap.has(key)) {
-            imageMap.set(key, { global: null, local: null })
-          }
-          imageMap.get(key).global = img
-        })
-        
-        // 处理本地图片
-        localImages.forEach(img => {
-          const key = `${img.group}_${img.photo}`
-          if (!imageMap.has(key)) {
-            imageMap.set(key, { global: null, local: null })
-          }
-          imageMap.get(key).local = img
-        })
-        
-        // 按照组号和照片号排序
-        const sortedKeys = Array.from(imageMap.keys()).sort((a, b) => {
-          const [aGroup, aPhoto] = a.split('_').map(Number)
-          const [bGroup, bPhoto] = b.split('_').map(Number)
+        // 合并并优先按照时间排序
+        const allImages = [...globalImages, ...localImages].sort((a, b) => {
+          // 首先按照修改时间排序（降序）
+          const timeA = new Date(a.time).getTime();
+          const timeB = new Date(b.time).getTime();
+          if (timeA !== timeB) return timeB - timeA;
           
-          if (aGroup !== bGroup) return aGroup - bGroup
-          return aPhoto - bPhoto
-        })
+          // 时间相同时，按组号排序（降序）
+          if (a.group !== b.group) return b.group - a.group;
+          
+          // 组号相同时，按照照片号排序（降序）
+          if (a.photo !== b.photo) return b.photo - a.photo;
+          
+          // 最后按来源排序，让local排在global后面
+          return a.source === 'global' ? -1 : 1;
+        });
         
-        // 创建排序后的图片数组
-        cachedImages.value = []
-        sortedKeys.forEach(key => {
-          const pair = imageMap.get(key)
-          if (pair.global) cachedImages.value.push(pair.global)
-          if (pair.local) cachedImages.value.push(pair.local)
-        })
+        // 更新缓存
+        cachedImages.value = allImages;
         
-        // 如果没有找到图片，使用测试图片
-        if (cachedImages.value.length === 0) {
-          addLog(`未找到图片，使用测试图片代替。查找路径: ${globalImagesPath.value} 和 ${localImagesPath.value}`, 'warning')
-          createTestImages()
+        if (allImages.length === 0) {
+          console.log('未找到有效图片');
+          addLog(`未找到图片。查找路径: ${globalImagesPath.value} 和 ${localImagesPath.value}`, 'warning');
         } else {
-          addLog(`成功加载 ${cachedImages.value.length} 张图片`, 'success')
+          // 按组分类日志输出
+          const groupedImages = allImages.reduce((acc, img) => {
+            const key = `组${img.group}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(`${img.source}_${img.photo}`);
+            return acc;
+          }, {});
+          
+          Object.entries(groupedImages).forEach(([group, photos]) => {
+            console.log(`${group}: ${photos.join(', ')}`);
+          });
+          
+          addLog(`成功加载 ${allImages.length} 张图片（全局：${globalImages.length}，本地：${localImages.length}）`, 'success');
+
+          // 根据加载的图片更新进度
+          const totalExpectedPhotos = totalGroups.value * photosPerGroup.value;
+          const currentTotalPhotos = Math.max(globalImages.length, localImages.length);
+          
+          // 更新进度
+          completedGroups.value = Math.floor(currentTotalPhotos / photosPerGroup.value);
+          currentPhoto.value = currentTotalPhotos % photosPerGroup.value;
+          
+          // 确保不超过总数
+          if (completedGroups.value >= totalGroups.value) {
+            completedGroups.value = totalGroups.value;
+            currentPhoto.value = photosPerGroup.value;
+            isRunning.value = false;
+            addLog('实验已完成', 'success');
+          }
         }
         
-        // 更新显示
-        updateLatestPhotos()
+        return allImages;
       } catch (error) {
-        console.error('加载图片失败:', error)
-        addLog('加载图片失败: ' + error.message, 'error')
-        
-        // 出错时使用测试图片
-        createTestImages()
-        updateLatestPhotos()
+        console.error('加载图片失败:', error);
+        addLog('加载图片失败: ' + error.message, 'error');
+        return [];
       }
     }
 
@@ -668,70 +687,123 @@ export default {
     }
 
     // 更新最新的图片路径
-    const updateLatestPhotos = () => {
+    const updateLatestPhotos = async () => {
       try {
-        // 如果没有缓存的图片，则使用测试图片
-        if (cachedImages.value.length === 0) {
-          // 使用测试图片
-          const imgPath = '/test-image.jpg'
-          latestPhotos.value = [
-            { path: imgPath, group: 5, photo: 1, source: 'global', time: new Date().toLocaleTimeString() },
-            { path: imgPath, group: 5, photo: 1, source: 'local', time: new Date().toLocaleTimeString() },
-            { path: imgPath, group: 5, photo: 2, source: 'global', time: new Date().toLocaleTimeString() },
-            { path: imgPath, group: 5, photo: 2, source: 'local', time: new Date().toLocaleTimeString() }
-          ]
-          
-          // 尝试加载本地图片
-          loadLocalImages()
-          return
+        // console.log('开始刷新图片显示...');
+        
+        // 重新加载最新的图片
+        const images = await loadLocalImages();
+        
+        if (images.length === 0) {
+          latestPhotos.value = Array(4).fill({
+            path: '',
+            group: 0,
+            photo: 0,
+            time: new Date().toLocaleTimeString()
+          });
+          console.log('没有找到图片，使用空占位符');
+          return;
         }
-        
-        // 按顺序选择4张图片显示
-        const startIndex = currentImageIndex.value % cachedImages.value.length
-        const selectedFiles = []
-        
-        // 确保我们选择的是4张图片，并且按照global/local交替的顺序
-        // 如果缓存中的图片不足4张，则循环使用
-        for (let i = 0; i < 4; i++) {
-          const index = (startIndex + i) % cachedImages.value.length
-          selectedFiles.push(cachedImages.value[index])
-        }
-        
-        // 更新当前索引，下次显示下一组图片
-        currentImageIndex.value = (startIndex + 4) % cachedImages.value.length
-        
-        // 更新图片显示
-        latestPhotos.value = selectedFiles.map((img, index) => {
-          return {
-            path: img.path,  // 这里使用后端提供的图片路径
-            actualPath: img.actualPath, // 保存实际路径用于调试
-            group: img.group,
-            photo: img.photo,
-            source: img.source,
-            time: img.time
+
+        // 按组和照片编号对图片进行分组
+        const imageGroups = {};
+        images.forEach(img => {
+          const key = `${img.group}_${img.photo}`;
+          if (!imageGroups[key]) {
+            imageGroups[key] = {};
           }
-        })
-        
-        // 更新日志，显示当前图片的组号、照片号和来源
-        const logMessage = selectedFiles.map(img => 
-          `${img.source}/${img.group}_${img.photo}`
-        ).join(', ')
-        
-        addLog(`图片更新成功 (当前显示: ${logMessage})`, 'success')
+          imageGroups[key][img.source] = img;
+        });
+
+        // 获取所有完整的图片对
+        const completePairs = Object.entries(imageGroups)
+          .filter(([_, group]) => group.global && group.local)
+          .map(([key, group]) => ({
+            key: key,
+            global: group.global,
+            local: group.local,
+            // 使用最新的时间（global和local中较新的时间）
+            latestTime: new Date(Math.max(
+              new Date(group.global.time).getTime(),
+              new Date(group.local.time).getTime()
+            ))
+          }))
+          .sort((a, b) => {
+            // 首先按最新时间排序
+            const timeComparison = b.latestTime.getTime() - a.latestTime.getTime();
+            if (timeComparison !== 0) return timeComparison;
+            
+            // 时间相同时才考虑组号和照片号
+            const [aGroup, aPhoto] = a.key.split('_').map(Number);
+            const [bGroup, bPhoto] = b.key.split('_').map(Number);
+            if (aGroup !== bGroup) return bGroup - aGroup;
+            return bPhoto - aPhoto;
+          });
+
+        // console.log('找到的完整图片对:', 
+        //   completePairs.map(p => {
+        //     const [group, photo] = p.key.split('_');
+        //     return `组${group}照片${photo}(${p.latestTime.toLocaleTimeString()})`;
+        //   }).join(', '));
+
+        // 选择最新的两组图片对并构建显示数组
+        const orderedPhotos = [];
+        completePairs.slice(0, 2).forEach(pair => {
+          // 确保每对中global在前，local在后
+          if (pair.global) {
+            orderedPhotos.push({
+              ...pair.global,
+              path: getImageUrl(pair.global.path)
+            });
+          }
+          if (pair.local) {
+            orderedPhotos.push({
+              ...pair.local,
+              path: getImageUrl(pair.local.path)
+            });
+          }
+        });
+
+        // 填充空位
+        while (orderedPhotos.length < 4) {
+          orderedPhotos.unshift({
+            path: '',
+            group: 0,
+            photo: 0,
+            time: new Date().toLocaleTimeString()
+          });
+        }
+
+        // 更新显示
+        latestPhotos.value = orderedPhotos.map(img => ({
+          path: img.path || '',
+          actualPath: img.actualPath || '',
+          group: img.group || 0,
+          photo: img.photo || 0,
+          source: img.source || '',
+          time: new Date(img.time).toLocaleTimeString()
+        }));
+
+        // 记录图片更新日志
+        const logMessage = orderedPhotos
+          .filter(img => img.source)
+          .map(img => `${img.source}/${img.group}_${img.photo}`)
+          .join(', ');
+
+        if (logMessage) {
+          // console.log('当前显示的图片:', logMessage);
+          addLog(`图片更新成功: ${logMessage}`, 'success');
+        }
       } catch (error) {
-        console.error('获取图片失败:', error)
-        addLog('获取图片失败', 'error')
+        console.error('获取图片失败:', error);
+        addLog('获取图片失败: ' + error.message, 'error');
         
-        // 出错时使用测试图片
-        const imgPath = '/test-image.jpg'
-        
-        // 创建模拟图片数据，按照特定顺序排列
-        latestPhotos.value = [
-          { path: imgPath, group: 5, photo: 1, source: 'global', time: new Date().toLocaleTimeString() },
-          { path: imgPath, group: 5, photo: 1, source: 'local', time: new Date().toLocaleTimeString() },
-          { path: imgPath, group: 5, photo: 2, source: 'global', time: new Date().toLocaleTimeString() },
-          { path: imgPath, group: 5, photo: 2, source: 'local', time: new Date().toLocaleTimeString() }
-        ]
+        latestPhotos.value = Array(4).fill({
+          path: '',
+          group: 0,
+          photo: 0,
+          time: new Date().toLocaleTimeString()
+        });
       }
     }
 
@@ -817,7 +889,16 @@ export default {
           })
 
           // 跳转到登录页
+          const store = useStore()
           const router = useRouter()
+
+          // 计算实验进度
+          const modelProgress = computed(() => {
+            const status = store.state.systemStatus
+            if (!status || !status.current_config || !status.current_config.total_groups) return 0
+            return Math.round((status.current_group / status.current_config.total_groups) * 100)
+          })
+
           router.push('/login')
         })
         .catch(() => {
@@ -860,21 +941,23 @@ export default {
           updateFeedingData()
           elapsedTime.value++
 
-          // 更新实验进度
-          if (elapsedTime.value % 5 === 0) {
-            // 每5秒更新一次进度
+          // 更新实验进度 - 现在只在相机拍摄完成后更新
+          // 检查系统日志中是否有相机拍摄完成的记录
+          const latestLog = systemLogs.value[0];
+          if (latestLog && latestLog.content === '相机拍摄完成' && latestLog.type === 'success') {
+            // 更新当前照片计数
             if (currentPhoto.value < photosPerGroup.value - 1) {
               currentPhoto.value++
             } else {
-              currentPhoto.value = 0
+              currentPhoto.value = 0;
               if (completedGroups.value < totalGroups.value - 1) {
                 completedGroups.value++
-              } else {
-                // 实验完成
-                completedGroups.value = totalGroups.value
-                currentPhoto.value = photosPerGroup.value
-                isRunning.value = false
-                addLog('实验已完成', 'success')
+              } else if (completedGroups.value === totalGroups.value - 1) {
+                // 最后一组完成时的处理
+                completedGroups.value = totalGroups.value;
+                currentPhoto.value = photosPerGroup.value;
+                isRunning.value = false;
+                addLog('实验已完成', 'success');
               }
             }
           }
@@ -909,7 +992,7 @@ export default {
     })
 
     return {
-      // 状态
+      modelProgress,
       isRunning,
       isInitialized,
       cameraConnected,
@@ -974,8 +1057,8 @@ export default {
   display: flex;
   flex-direction: column;
   background: #001529;
-  padding: 16px;
-  gap: 16px;
+  padding: 10px;
+  gap: 10px;
   overflow: hidden;
   position: relative;
   box-sizing: border-box;
@@ -1107,8 +1190,8 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 24px;
-  height: 60px;
+  padding: 0 20px;
+  height: 50px;
   position: relative;
   z-index: 1;
   backdrop-filter: blur(10px);
@@ -1353,7 +1436,7 @@ export default {
 .photos-section {
   background: rgba(0, 33, 64, 0.2);
   border-radius: 8px;
-  padding: 20px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1374,10 +1457,11 @@ export default {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(2, 1fr);
-  gap: 12px;
+  gap: 10px;
   flex: 1;
   min-height: 0;
   height: calc(100% - 40px);
+  margin-top: 2px;
 }
 
 .photo-item {
@@ -1387,8 +1471,19 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 180px;
+  min-height: 140px;
   overflow: hidden;
+}
+
+.photo-wrapper {
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .photo-placeholder {
@@ -1417,6 +1512,7 @@ export default {
   background: rgba(0, 24, 48, 0.3);
   padding: 4px;
   min-height: 0;
+  height: 30px;
 }
 
 .photo-image img {
@@ -1683,5 +1779,34 @@ body {
 
 .control-buttons .el-button + .el-button {
   margin-left: 0;
+}
+.section-container {
+  margin-top: 16px;
+}
+
+.section-header {
+  margin-bottom: 12px;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  color: #e6e6e6;
+  margin: 0;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.progress {
+  height: 100%;
+  background: #67c23a;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(103, 194, 58, 0.5);
 }
 </style>

@@ -224,18 +224,37 @@ export const getDirectoryImages = async (directory) => {
 }
 
 export const getImageUrl = (imagePath) => {
-  // 统一路径分隔符为正斜杠，适合URL格式
-  const normalizedPath = imagePath.replace(/\\/g, '/');
-  const url = `${API_BASE_URL}/images/file?path=${encodeURIComponent(normalizedPath)}`;
-  // 只在开发模式下输出调试信息
-  if (process.env.NODE_ENV === 'development') {
-    console.log('构建图片URL:', {
-      originalPath: imagePath,
-      normalizedPath,
-      url
-    });
+  if (!imagePath) {
+    console.warn('getImageUrl: imagePath is empty');
+    return '';
   }
-  return url
+
+  try {
+    // 统一路径分隔符为正斜杠，适合URL格式
+    const normalizedPath = imagePath.replace(/\\/g, '/');
+    
+    // 去除路径中的多余斜杠和点
+    const cleanPath = normalizedPath
+      .replace(/\/+/g, '/') // 多个斜杠替换为单个
+      .replace(/\/\.\//g, '/') // 移除 /./
+      .replace(/^\.\/?/, ''); // 移除开头的 ./ 或 .
+      
+    const url = `${API_BASE_URL}/images/file?path=${encodeURIComponent(cleanPath)}`;
+    
+    // 只在开发模式下输出调试信息
+    if (process.env.NODE_ENV === 'development') {
+      // console.log('构建图片URL:', {
+      //   originalPath: imagePath,
+      //   normalizedPath: cleanPath,
+      //   url
+      // });
+    }
+    
+    return url;
+  } catch (error) {
+    console.error('生成图片URL时出错:', error);
+    return '';
+  }
 }
 
 export const uploadAndProcessImages = async (files, imageType, sampleIndex, saveResults = true, outputPath = null) => {

@@ -91,13 +91,15 @@ const props = defineProps({
 const currentGroup = computed(() => props.status.current_group || 0)
 const totalGroups = computed(() => props.config.total_groups || 0)
 const currentPhoto = computed(() => props.status.current_photo || 0)
-const totalPhotos = computed(() => props.config.photos_per_group * 2 || 0)
+const totalPhotos = computed(() => props.config.photos_per_group || 0)
 const remainingSand = computed(() => props.status.remaining_sand || 0)
 const elapsedTime = computed(() => props.status.elapsed_time || 0)
 
 const totalProgress = computed(() => {
-  if (!totalGroups.value) return 0
-  return Math.round((currentGroup.value / totalGroups.value) * 100)
+  if (!props.config.total_groups || !props.config.photos_per_group) return 0;
+  const totalExpectedPhotos = props.config.photos_per_group * props.config.total_groups;
+  const actualPhotos = props.status.total_photos || 0;
+  return Math.min((actualPhotos / totalExpectedPhotos) * 100, 100);
 })
 
 const groupProgress = computed(() => {
@@ -106,7 +108,7 @@ const groupProgress = computed(() => {
 })
 
 const totalPhotosCount = computed(() => {
-  return currentGroup.value * totalPhotos.value + currentPhoto.value
+  return props.status.total_photos || 0
 })
 
 const remainingTime = computed(() => {
