@@ -135,13 +135,21 @@ class ProcessControl:
                 response = self.client.read_holding_registers(83)
                 if not response.isError():
                     data = response.registers
-                    if data[0] >= once_count * 1000:
-                        print("传感器数据：", data[0])
+                    raw_weight = data[0]
+                    target_weight = once_count * 1000
+                    # 当重量为大的负数时，可能为数据溢出，也视为达到目标
+                    # 小的负数（如-1, -10）被视为噪声，不触发倒沙
+                    overflow_threshold = -5000
+
+                    if raw_weight >= target_weight or raw_weight < overflow_threshold:
+                        if raw_weight < overflow_threshold:
+                            print(f"检测到溢出值 {raw_weight}，执行倒沙。")
+                        print(f"传感器数据: {raw_weight} / 目标: {target_weight}")
                         # 停止给料
                         self.master.execute(10, cst.WRITE_SINGLE_REGISTER, 5, output_value=0)
                         time.sleep(1)
                         # 下料翻转
-                        cmd0 = self.set_servo_angle(135, '000', '0100')
+                        cmd0 = self.set_servo_angle(120, '000', '0100')
                         self.servo_write(cmd0)
                         time.sleep(1.5)
                         # 复位
@@ -161,8 +169,8 @@ class ProcessControl:
         """开始给料"""
         try:
             # 设置初始舵机角度
-            cmd1 = self.set_servo_angle(135, '004', '0100')
-            cmd2 = self.set_servo_angle(-135, '005', '0100')
+            cmd1 = self.set_servo_angle(120, '004', '0100')
+            cmd2 = self.set_servo_angle(-120, '005', '0100')
             cmd3 = self.set_servo_angle(0, '000', '0100')
             self.servo_write(cmd1, cmd2, cmd3)
             time.sleep(1)
@@ -421,10 +429,19 @@ class ProcessControl:
                 triggle_single_action(self.master, 0, 1)  # 停止散料振动
                 
                 # 关闭背光源
-                try:
-                    self.master.execute(10, WRITE_SINGLE_REGISTER, 2, output_value=0)
-                except:
-                    pass
+                max_retries = 3
+                retry_delay = 1.0  # 1秒
+                for attempt in range(max_retries):
+                    try:
+                        self.master.execute(10, WRITE_SINGLE_REGISTER, 2, output_value=0)
+                        print("背光源已关闭")
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            print(f"关闭背光源失败，正在重试({attempt + 1}/{max_retries}): {str(e)}")
+                            time.sleep(retry_delay)
+                        else:
+                            print(f"关闭背光源失败，已达到最大重试次数: {str(e)}")
                 
                 # 确保停止给料
                 try:
@@ -465,8 +482,12 @@ class ProcessControl:
                 if not self.reinitialize():
                     raise Exception("重新初始化失败，无法继续执行")
 
+            # 重置所有状态
             self.is_running = True
             self.should_stop = False
+            self.current_group = 0
+            self.current_photo = 0
+            self.total_photos = 0
             total_start_time = time.time()
 
             # 如果没有指定起始组号，则自动获取下一组号
@@ -498,7 +519,7 @@ class ProcessControl:
                     break
 
                 # 2. 向左振动（移到给料后执行）
-                triggle_single_action(self.master, 3, 1)
+                triggle_single_action(self.master, 3, 2)
                 stop_single_action(self.master, 0.3)
 
                 # 3. 执行拍照和振动循环
@@ -516,7 +537,7 @@ class ProcessControl:
                     print(f"第 {photo_count} 次振动...")
                     triggle_single_action(self.master, 11, 0.5)
                     stop_single_action(self.master, 0.6)
-
+                    time.sleep(0.5)
                     # 拍照 - 使用CameraControl的方法拍照
                     photo_start_time = time.time()
                     try:
@@ -535,7 +556,7 @@ class ProcessControl:
                             self.current_photo = photo_count
                             self.total_photos += 1  # 每拍一张照片就加1
                             
-                            # 立即启动单张图片的异步处理任务
+                            # # 立即启动单张图片的异步处理任务 
                             self._process_captured_images(captured_images, group_count, photo_count)
                         else:
                             print(f"第 {group_count} 组第 {photo_count} 张照片拍摄失败")

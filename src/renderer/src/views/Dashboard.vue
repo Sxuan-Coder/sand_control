@@ -44,7 +44,7 @@
                   <el-input-number
                     v-model="totalGroups"
                     :min="1"
-                    :max="100"
+                    :max="1000"
                     :disabled="isRunning"
                     controls-position="right"
                     style="width: 100%"
@@ -55,7 +55,7 @@
                   <el-input-number
                     v-model="photosPerGroup"
                     :min="1"
-                    :max="100"
+                    :max="1000"
                     :disabled="isRunning"
                     controls-position="right"
                     style="width: 100%"
@@ -151,8 +151,8 @@
             <div class="console-container">
               <div class="console-header">
                 <div class="console-tabs">
-                  <div class="tab active">系统日志</div>
-                  <div class="tab">运行状态</div>
+                  <div class="tab active" style="color: #ccc;">系统日志</div>
+                  <div class="tab" style="color: #ccc;">运行状态</div>
                 </div>
                 <div class="console-controls">
                   <el-icon class="control-icon"><Delete /></el-icon>
@@ -190,10 +190,13 @@
                     @error="handleImageError"
                     @load="handleImageLoad"
                   />
+                  <div class="photo-type-tag" :class="{ 'global': index % 2 === 0, 'local': index % 2 === 1 }">
+                    {{ index % 2 === 0 ? '全局图像' :  '局部图像'}}
+                  </div>
                 </div>
                 <div class="photo-info">
-                  <span>组{{ photo.group }} - 照片{{ photo.photo }}</span>
-                  <span>{{ photo.time }}</span>
+                  <span>组{{ photo.group }} - 照片{{ photo.photo }} {{ photo.time }}</span>
+                
                 </div>
               </div>
             </div>
@@ -216,7 +219,9 @@
               </div>
               <div class="progress-bar">
                   <div class="progress" :style="{ width: modelProgress + '%' }"></div>
+                  
               </div>
+              <h2 style="justify-content: center;text-align: center;color: orange;">实验进度</h2>
           </div>
         </div>
       </div>
@@ -320,7 +325,7 @@ export default {
     const dataPath = ref('F:/sand_data/test')
     const totalGroups = ref(5)
     const photosPerGroup = ref(5)
-    const feedingAmount = ref(0.1)
+    const feedingAmount = ref(2)
 
     // 进度数据
     const completedGroups = ref(0)
@@ -1436,7 +1441,7 @@ export default {
 .photos-section {
   background: rgba(0, 33, 64, 0.2);
   border-radius: 8px;
-  padding: 10px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1456,12 +1461,13 @@ export default {
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 10px;
+  grid-template-rows: repeat(2, minmax(150px, 1fr));
+  gap: 16px;
   flex: 1;
   min-height: 0;
-  height: calc(100% - 40px);
+  height: calc(100% - 30px);
   margin-top: 2px;
+  overflow-y: auto;
 }
 
 .photo-item {
@@ -1471,7 +1477,7 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 140px;
+  min-height: 150px;
   overflow: hidden;
 }
 
@@ -1512,25 +1518,46 @@ export default {
   background: rgba(0, 24, 48, 0.3);
   padding: 4px;
   min-height: 0;
-  height: 30px;
+  height: calc(100% - 50px);
+  position: relative;
+}
+
+.photo-type-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #fff;
+  z-index: 2;
+}
+
+.photo-type-tag.global {
+  background-color: rgba(0, 145, 255, 0.8);
+}
+
+.photo-type-tag.local {
+  background-color: rgba(0, 200, 83, 0.8);
+  z-index: 3;
 }
 
 .photo-image img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  border-radius: 4px;
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
 }
 
 .photo-info {
-  background: rgba(0, 24, 48, 0.3);
+  padding: 6px 8px;
+  background: rgba(0, 24, 48, 0.4);
   border-top: 1px solid rgba(0, 145, 255, 0.1);
-  padding: 8px 12px;
+  height: 50px;
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  align-items: center;
-  height: 36px;
-  flex-shrink: 0;
 }
 
 .photo-info span {
@@ -1673,7 +1700,19 @@ body {
 .control-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
+}
+
+.control-form .el-form-item {
+  margin-bottom: 8px;
+}
+
+.control-form .el-form-item__content {
+  margin-left: 8px !important;
+}
+
+.control-form .el-button {
+  margin-left: 8px;
 }
 
 .form-row {
@@ -1780,6 +1819,7 @@ body {
 .control-buttons .el-button + .el-button {
   margin-left: 0;
 }
+
 .section-container {
   margin-top: 16px;
 }
@@ -1792,6 +1832,16 @@ body {
   font-size: 16px;
   color: #e6e6e6;
   margin: 0;
+}
+
+.section-header .photo-info span {
+  font-size: 12px;
+  color: #ffffff80;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .progress-bar {

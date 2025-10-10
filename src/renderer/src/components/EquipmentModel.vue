@@ -49,7 +49,7 @@ const initScene = () => {
     // 创建相机
     const aspect = container.value.clientWidth / container.value.clientHeight
     camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000)
-    camera.position.set(100, 100, 100)
+    camera.position.set(200, -150, -50)
     camera.lookAt(0, 0, 0)
 
     // 创建渲染器
@@ -65,6 +65,14 @@ const initScene = () => {
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.05
+    
+    // 限制垂直旋转角度，防止看到地面以下
+    controls.minPolarAngle = 0 // 最小垂直角度（弧度）
+    controls.maxPolarAngle = Math.PI / 2 // 最大垂直角度（PI/2 = 90度）
+
+    // 添加缩放限制
+    controls.minDistance = 150  // 最小缩放距离
+    controls.maxDistance = 350  // 最大缩放距离
 
     // 添加光源
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
@@ -114,7 +122,7 @@ const loadModel = () => {
 
                 // 根据模型大小计算合适的缩放
                 const maxDim = Math.max(size.x, size.y, size.z)
-                const scale = (50 * 2) / maxDim  // 放大两倍
+                const scale = (50 * 3) / maxDim  // 放大两倍
                 fbx.scale.set(scale, scale, scale)
 
                 // 将模型居中
@@ -157,7 +165,8 @@ const animate = () => {
     animationFrameId = requestAnimationFrame(animate)
     if (model) {
         // 模型绕Y轴旋转
-        // model.rotation.y += 0.008 * 8
+        scene.rotation.y += 0.008
+
     }
     controls.update()
     renderer.render(scene, camera)
@@ -229,28 +238,30 @@ onUnmounted(() => {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    background-color: rgba(255, 255, 255, 0.5);
-    z-index: 10;
+    align-items: center;
+    z-index: 1000;
 }
 
 .loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    border-top: 5px solid #3498db;
     border-radius: 50%;
     animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
 }
 
 .loading-text {
-    margin-top: 10px;
-    color: #333;
+    color: #3498db;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes spin {

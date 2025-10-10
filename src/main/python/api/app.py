@@ -69,7 +69,7 @@ class CameraConfig(BaseModel):
 # 新增电子秤相关模型
 class ScaleCalibration(BaseModel):
     """电子秤校准配置"""
-    calibration_weight: float = 1.24  # 校准砝码重量，默认1.24g
+    calibration_weight: float = 0  # 校准砝码重量，默认1.24g
     slave_address: int = 0x01  # 从站地址，默认01H
 
 class ScaleStatus(BaseModel):
@@ -242,6 +242,9 @@ def run_process(process, config: ProcessConfig):
         # 确保目录存在
         os.makedirs(config.base_path, exist_ok=True)
 
+        # 设置进程实例状态
+        process.is_running = True
+
         # 执行流程
         process.execute_process(
             base_path=config.base_path,
@@ -316,9 +319,24 @@ async def get_results():
                 status_code=404
             )
         
+        # 检查文件大小
+        file_size = os.path.getsize(results_path)
+        if file_size > 10 * 1024 * 1024:  # 如果文件大于10MB
+            logger.warning(f"结果文件较大 ({file_size/1024/1024:.2f}MB)，可能需要优化")
+            
         # 读取结果文件
-        with open(results_path, 'r') as f:
-            results = json.load(f)
+        try:
+            with open(results_path, 'r') as f:
+                results = json.load(f)
+        except json.JSONDecodeError as je:
+            logger.error(f"JSON解析错误: {str(je)}")
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "error": "结果文件格式错误"
+                },
+                status_code=500
+            )
         
         return JSONResponse(content=results)
     except Exception as e:
@@ -401,8 +419,14 @@ async def start_process(config: ProcessConfig, background_tasks: BackgroundTasks
 async def stop_process(process=Depends(get_process)):
     """停止流程"""
     global is_running, system_status
-    if not is_running:
+    
+    # 检查进程实例的运行状态，而不是全局状态
+    if not process.is_running:
         raise HTTPException(status_code=400, detail="系统未在运行")
+    
+    # 设置全局状态
+    is_running = False
+    system_status["is_running"] = False
 
     try:
         # 首先调用停止流程方法

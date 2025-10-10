@@ -18,7 +18,7 @@ const API_BASE_URL = process.env.NODE_ENV === 'development'
 // 创建axios实例
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30秒超时
+  timeout: 60000, // 60秒超时
   headers: {
     'Content-Type': 'application/json'
   }

@@ -239,10 +239,52 @@ onUnmounted(() => {
 
 <style scoped>
 .clean-sand-control {
-  background-color: #f5f7fa;
+  background: rgba(0, 33, 64, 0.2);
   border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  border: 1px solid rgba(0, 145, 255, 0.15);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.control-body {
+  flex-shrink: 0;
+}
+
+.control-header {
+  flex-shrink: 0;
+}
+
+.control-logs {
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 20px;
+  min-height: 100px;
+  max-height: 200px;
+}
+
+.logs-container {
+  padding-right: 10px;
+}
+
+/* 自定义滚动条样式 */
+.control-logs::-webkit-scrollbar {
+  width: 6px;
+}
+
+.control-logs::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.control-logs::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.control-logs::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .control-header {
@@ -254,7 +296,7 @@ onUnmounted(() => {
 
 .control-header h3 {
   margin: 0;
-  color: #303133;
+  color: #00a8ff;
 }
 
 .control-body {

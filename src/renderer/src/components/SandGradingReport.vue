@@ -78,7 +78,17 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center">
             <p class="text-xs mr-3">
-              <strong>细度模数：</strong><span class="font-bold">{{ fineModulus }}</span>
+              <strong>细度模数（标准）：</strong><span class="font-bold">{{ fineModulus }}</span>
+            </p>
+            <p class="text-xs mr-3">
+              <strong>细度模数（特定）：</strong><span class="font-bold">{{ fineModulusSpecial }}</span>
+            </p>
+            <p class="text-xs mr-3">
+              <strong>差值：</strong><span class="font-bold" :class="{
+                'text-red-600': parseFloat(fineModulusSpecial) > parseFloat(fineModulus),
+                'text-blue-600': parseFloat(fineModulusSpecial) < parseFloat(fineModulus),
+                'text-green-600': parseFloat(fineModulusSpecial) === parseFloat(fineModulus)
+              }">{{ (parseFloat(fineModulusSpecial) - parseFloat(fineModulus)).toFixed(2) }}</span>
             </p>
             <p class="text-xs flex items-center">
               <strong>检测结论：</strong>
@@ -231,12 +241,26 @@
               </div>
             </div>
             <div class="border border-gray-400 p-1 bg-gray-50 mb-1 rounded-sm">
-              <p class="font-semibold mb-0.5 text-blue-800">细度模数计算方法：</p>
-              <p class="mb-0.5">细度模数(MF) = (各筛孔累计筛余百分率之和) ÷ 100</p>
-              <p class="mb-0.5">本样品计算：</p>
+              <p class="font-semibold mb-0.5 text-blue-800">细度模数计算方法对比：</p>
+              <p class="mb-0.5"><strong>标准方法（GB/T 14684-2022）：</strong></p>
+              <p class="mb-0.5">MF = (各筛孔累计筛余百分率之和 + 100) ÷ 100</p>
               <p class="mb-0.5">
-                MF = ({{ reportData.cumulative.map((val) => (100 - val).toFixed(2)).join(' + ') }} +
-                100) ÷ 100 = {{ fineModulus }}
+                计算：MF = ({{ reportData.cumulative.map((val) => (100 - val).toFixed(2)).join(' + ') }} + 100) ÷ 100 = {{ fineModulus }}
+              </p>
+              
+              <p class="mb-0.5 mt-2"><strong>特定算法（Python get_mx方法）：</strong></p>
+              <p class="mb-0.5">MF = ((∑累计求和) - 5×第一项) ÷ (100 - 第一项)</p>
+              <p class="mb-0.5">计算结果：{{ fineModulusSpecial }}</p>
+              
+              <p class="mb-0.5 mt-2"><strong>差值分析：</strong></p>
+              <p class="mb-0.5" :class="{
+                'text-red-600': parseFloat(fineModulusSpecial) > parseFloat(fineModulus),
+                'text-blue-600': parseFloat(fineModulusSpecial) < parseFloat(fineModulus),
+                'text-green-600': parseFloat(fineModulusSpecial) === parseFloat(fineModulus)
+              }">
+                特定方法 - 标准方法 = {{ (parseFloat(fineModulusSpecial) - parseFloat(fineModulus)).toFixed(2) }}
+                ({{ parseFloat(fineModulusSpecial) > parseFloat(fineModulus) ? '偏大' : 
+                    parseFloat(fineModulusSpecial) < parseFloat(fineModulus) ? '偏小' : '相等' }})
               </p>
             </div>
             <p class="font-semibold mb-0.5 mt-1 text-blue-800">机制砂质量要求（部分）：</p>
@@ -363,6 +387,7 @@ export default {
       cumulative: []
     });
     const fineModulus = ref('0.00');
+    const fineModulusSpecial = ref('0.00'); // Python特定方法的结果
     const reportNumber = ref(`SG${Date.now().toString().slice(-6)}`);
     const currentDateTime = ref(new Date().toLocaleString());
     const showLineChart = ref(true);
@@ -434,6 +459,7 @@ export default {
 
       // 更新细度模数
       calculateFineModulus()
+      fineModulusSpecial.value = calculateFineModulusSpecial()
 
       // 更新报告编号
       reportNumber.value = `ICDIO-2025-0425-${Math.floor(Math.random() * 1000)}`
@@ -456,12 +482,46 @@ export default {
       })
     }
 
-    // 计算细度模数
+    // 计算细度模数 - 标准方法
     const calculateFineModulus = () => {
-      // 细度模数 = (各筛孔累计筛余百分率之和) ÷ 100
+      // 标准方法：细度模数 = (各筛孔累计筛余百分率之和) ÷ 100
       const cumulativeRetained = reportData.value.cumulative.map((val) => 100 - val)
       const sum = cumulativeRetained.reduce((acc, val) => acc + val, 0) + 100
       fineModulus.value = (sum / 100).toFixed(2)
+    }
+
+    // 计算细度模数 - Python特定方法 (用于对比)
+    const calculateFineModulusSpecial = () => {
+      // Python特定方法：模拟get_mx函数的计算逻辑
+      // data = data[::-1] - 反转数组（从小粒径到大粒径）
+      // data = [a * 100 for a in data] - 转换为百分比
+      // mx = ((sum(data[:2]) + sum(data[:3]) + sum(data[:4]) + sum(data[:5]) + sum(data[:6])) - 5 * data[0]) / (100 - data[0])
+      
+      // 将累计通过率转换为累计筛余率
+      const cumulativeRetained = reportData.value.cumulative.map((val) => 100 - val)
+      
+      // 反转数组（从大粒径到小粒径变为从小粒径到大粒径）
+      const reversedData = [...cumulativeRetained].reverse()
+      
+      // 按照Python公式计算
+      const data = reversedData // 已经是百分比形式
+      
+      if (data.length < 6 || (100 - data[0]) === 0) {
+        return '0.00' // 避免除零错误
+      }
+      
+      // 计算 sum(data[:2]) + sum(data[:3]) + sum(data[:4]) + sum(data[:5]) + sum(data[:6])
+      let totalSum = 0
+      for (let i = 2; i <= 6; i++) {
+        if (i <= data.length) {
+          totalSum += data.slice(0, i).reduce((sum, val) => sum + val, 0)
+        }
+      }
+      
+      // 应用公式：((totalSum) - 5 * data[0]) / (100 - data[0])
+      const mx = (totalSum - 5 * data[0]) / (100 - data[0])
+      
+      return mx.toFixed(2)
     }
 
     // 通过API获取AI建议
@@ -945,6 +1005,7 @@ export default {
 
         // 更新细度模数
         calculateFineModulus();
+        fineModulusSpecial.value = calculateFineModulusSpecial();
         
         // 更新报告编号
         reportNumber.value = `ICDIO-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000)}`;
@@ -1069,6 +1130,7 @@ export default {
       showLineChart,
       reportData,
       fineModulus,
+      fineModulusSpecial,
       reportNumber,
       pieChartRef,
       lineChartRef,

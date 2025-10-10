@@ -1,7 +1,7 @@
 <template>
   <div class="scale-control">
     <div class="scale-header">
-      <h2>电子秤控制</h2>
+      <h2>高精度压力传感器</h2>
       <div class="scale-status" :class="{ connected: scaleStatus.is_connected }">
         {{ scaleStatus.is_connected ? '已连接' : '未连接' }}
       </div>
@@ -251,8 +251,24 @@ export default {
 .scale-control {
   background: rgba(0, 33, 64, 0.2);
   border-radius: 8px;
-  padding: 20px;
+  padding: 12px;
   border: 1px solid rgba(0, 145, 255, 0.15);
+}
+
+.control-section {
+  margin: 8px 0;
+}
+
+.calibration-section {
+  margin: 8px 0;
+}
+
+.weight-display {
+  margin: 12px 0;
+}
+
+.el-form-item {
+  margin-bottom: 12px;
 }
 
 .scale-header {
