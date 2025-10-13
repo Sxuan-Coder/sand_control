@@ -2,8 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn } from 'child_process'
-import { dirname } from 'path'
-import icon from '../../resources/icon.png?asset'
+// import icon from '../../resources/icon.png?asset' // 暂时注释掉，图标文件不存在
 import axios from 'axios'
 
 // 存储Python进程的引用
@@ -13,8 +12,8 @@ let pythonProcess = null
 function startPythonServer() {
   return new Promise((resolve, reject) => {
     try {
-      // 获取Python脚本的路径 - 使用测试API
-      const pythonScriptPath = 'c:\\Users\\ASUS\\Desktop\\SandControl\\sand-nb-master\\src\\main\\python\\api\\app.py'
+      // 获取Python脚本的路径 - 使用动态路径
+      const pythonScriptPath = join(__dirname, '..', '..', 'src', 'main', 'python', 'api', 'app.py')
       console.log('Python脚本路径:', pythonScriptPath)
 
       // 设置环境变量确保输出中文
@@ -26,7 +25,7 @@ function startPythonServer() {
       // 启动Python进程
       pythonProcess = spawn('python', [
         pythonScriptPath
-      ], { 
+      ], {
         env: env,
         // 在Windows上指定编码
         windowsHide: true,
@@ -42,7 +41,7 @@ function startPythonServer() {
           // 尝试使用utf8解码
           const output = data.toString('utf8')
           console.log(`Python服务器输出: ${output}`)
-          
+
           // 检查输出中是否包含服务器启动成功的信息
           if (output.includes('Uvicorn running on') || output.includes('Application startup complete')) {
             if (!serverStarted) {
@@ -62,7 +61,7 @@ function startPythonServer() {
           // 尝试使用utf8解码
           const errorOutput = data.toString('utf8')
           console.error(`Python服务器错误: ${errorOutput}`)
-          
+
           // 如果在错误输出中也能检测到服务器启动（某些框架会在stderr输出启动信息）
           if (errorOutput.includes('Uvicorn running on') || errorOutput.includes('Application startup complete')) {
             if (!serverStarted) {
@@ -121,16 +120,16 @@ function createWindow() {
     mainWindow.show()
   })
 
-    // 设置CSP头，允许连接到本地API服务器
-    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*"]
-        }
-      })
+  // 设置CSP头，允许连接到本地API服务器
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*"]
+      }
     })
-  
+  })
+
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -185,7 +184,7 @@ app.whenReady().then(() => {
 
   // IPC测试
   ipcMain.on('ping', () => console.log('pong'))
-  
+
   // 处理网络请求
   ipcMain.handle('fetch-data', async (event, url) => {
     try {
@@ -198,7 +197,7 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
-  
+
   // 创建 axios 实例用于 API 调用
   const api = axios.create({
     baseURL: 'http://127.0.0.1:8000',
@@ -207,13 +206,13 @@ app.whenReady().then(() => {
       'Content-Type': 'application/json'
     }
   })
-  
+
   // 通用 API 调用处理程序
   ipcMain.handle('api-call', async (event, { endpoint, method, data, params }) => {
     try {
       console.log(`主进程 API 调用: ${method.toUpperCase()} ${endpoint}`)
       let response
-      
+
       switch (method.toLowerCase()) {
         case 'get':
           response = await api.get(endpoint, { params })
@@ -230,24 +229,24 @@ app.whenReady().then(() => {
         default:
           throw new Error(`不支持的方法: ${method}`)
       }
-      
+
       return { success: true, data: response.data }
     } catch (error) {
       console.error(`API 调用失败 (${endpoint}): ${error.message}`)
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText
       }
     }
   })
-  
+
   // 获取图片 URL
   ipcMain.handle('get-image-url', async (event, { imagePath }) => {
     return `http://127.0.0.1:8000/images/file?path=${encodeURIComponent(imagePath)}`
   })
-  
+
   // 测试服务器连接
   ipcMain.handle('test-server-connection', async () => {
     try {
@@ -258,14 +257,14 @@ app.whenReady().then(() => {
       return { success: false, message: '服务器连接失败', error: error.message }
     }
   })
-  
+
   // 讯飞星火大模型 API
   ipcMain.handle('chat-with-xfyun', async (event, { userMessage }) => {
     try {
       // 讯飞星火大模型 API 配置
       const XFYUN_API_URL = 'http://127.0.0.1:8000/xfyun-api/v1/chat/completions' // 使用代理路径
       const AUTH_TOKEN = 'pFKHvqJefKoFYrsZVvqJ:QneWSeXeqoeefFUBsAcV'
-      
+
       // 构建请求体
       const requestBody = {
         model: '4.0Ultra',
@@ -277,16 +276,16 @@ app.whenReady().then(() => {
         ],
         stream: false
       }
-      
+
       // 请求头设置
       const headers = {
         Authorization: `Bearer ${AUTH_TOKEN}`,
         'Content-Type': 'application/json'
       }
-      
+
       // 发送POST请求
       const response = await axios.post(XFYUN_API_URL, requestBody, { headers })
-      
+
       // 返回响应内容
       if (response.data && response.data.choices && response.data.choices.length > 0) {
         return { success: true, content: response.data.choices[0].message.content }
@@ -305,7 +304,7 @@ app.whenReady().then(() => {
     .then(() => {
       console.log('Python服务器已启动，现在创建窗口...')
       createWindow()
-      
+
       // 添加IPC处理程序，允许渲染进程请求API状态
       ipcMain.handle('check-api-status', async () => {
         try {

@@ -4,12 +4,11 @@ const path = require("path");
 const utils = require("@electron-toolkit/utils");
 const child_process = require("child_process");
 const axios = require("axios");
-const icon = path.join(__dirname, "../../resources/icon.png");
 let pythonProcess = null;
 function startPythonServer() {
   return new Promise((resolve, reject) => {
     try {
-      const pythonScriptPath = "c:\\Users\\ASUS\\Desktop\\SandControl\\sand-nb-master\\src\\main\\python\\api\\app.py";
+      const pythonScriptPath = path.join(__dirname, "..", "..", "src", "main", "python", "api", "app.py");
       console.log("Python脚本路径:", pythonScriptPath);
       const env = Object.assign({}, process.env);
       env.PYTHONIOENCODING = "utf-8";
