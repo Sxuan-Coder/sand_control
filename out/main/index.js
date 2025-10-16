@@ -199,6 +199,59 @@ electron.app.whenReady().then(() => {
       return { success: false, message: "服务器连接失败", error: error.message };
     }
   });
+  electron.ipcMain.handle("open-image-processing-window", () => {
+    const imageProcessingWindow = new electron.BrowserWindow({
+      width: 1400,
+      height: 900,
+      show: false,
+      autoHideMenuBar: true,
+      title: "图像处理展示",
+      backgroundColor: "#0a0e27",
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/index.js"),
+        sandbox: false,
+        webSecurity: false,
+        allowRunningInsecureContent: true
+      }
+    });
+    imageProcessingWindow.on("ready-to-show", () => {
+      imageProcessingWindow.show();
+      if (utils.is.dev) {
+        imageProcessingWindow.webContents.openDevTools();
+      }
+    });
+    imageProcessingWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": ["default-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*"]
+        }
+      });
+    });
+    const imageProcessingUrl = utils.is.dev && process.env["ELECTRON_RENDERER_URL"] ? process.env["ELECTRON_RENDERER_URL"] + "/image-processing" : "file://" + path.join(__dirname, "../renderer/index.html");
+    console.log("正在加载图像处理窗口:", imageProcessingUrl);
+    if (utils.is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+      imageProcessingWindow.loadURL(process.env["ELECTRON_RENDERER_URL"] + "/image-processing");
+    } else {
+      imageProcessingWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+    }
+    imageProcessingWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription) => {
+      console.error("图像处理窗口加载失败:", errorCode, errorDescription);
+    });
+    imageProcessingWindow.webContents.on("did-finish-load", () => {
+      console.log("图像处理窗口加载完成");
+      const currentUrl = imageProcessingWindow.webContents.getURL();
+      console.log("当前窗口 URL:", currentUrl);
+    });
+    imageProcessingWindow.webContents.on("did-navigate", (event, url) => {
+      console.log("窗口导航到:", url);
+      if (utils.is.dev && !url.includes("/image-processing") && !url.includes("/login")) {
+        console.log("检测到非预期导航，重新加载图像处理页面");
+        imageProcessingWindow.loadURL(process.env["ELECTRON_RENDERER_URL"] + "/image-processing");
+      }
+    });
+    return { success: true };
+  });
   electron.ipcMain.handle("chat-with-xfyun", async (event, { userMessage }) => {
     try {
       const XFYUN_API_URL = "http://127.0.0.1:8000/xfyun-api/v1/chat/completions";

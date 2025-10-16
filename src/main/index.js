@@ -258,6 +258,77 @@ app.whenReady().then(() => {
     }
   })
 
+  // 打开图像处理窗口
+  ipcMain.handle('open-image-processing-window', () => {
+    const imageProcessingWindow = new BrowserWindow({
+      width: 1400,
+      height: 900,
+      show: false,
+      autoHideMenuBar: true,
+      title: '图像处理展示',
+      backgroundColor: '#0a0e27',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false,
+        webSecurity: false,
+        allowRunningInsecureContent: true
+      }
+    })
+
+    imageProcessingWindow.on('ready-to-show', () => {
+      imageProcessingWindow.show()
+    
+    })
+
+    // 设置CSP头
+    imageProcessingWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:*; img-src 'self' data: http://localhost:* http://127.0.0.1:*; connect-src 'self' http://localhost:* http://127.0.0.1:*"]
+        }
+      })
+    })
+
+    // 加载图像处理页面（使用普通路由，不带 #）
+    const imageProcessingUrl = is.dev && process.env['ELECTRON_RENDERER_URL']
+      ? process.env['ELECTRON_RENDERER_URL'] + '/image-processing'
+      : 'file://' + join(__dirname, '../renderer/index.html')
+    
+    console.log('正在加载图像处理窗口:', imageProcessingUrl)
+    
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      imageProcessingWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/image-processing')
+    } else {
+      imageProcessingWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    }
+
+    // 监听加载错误
+    imageProcessingWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      console.error('图像处理窗口加载失败:', errorCode, errorDescription)
+    })
+
+    // 监听加载完成
+    imageProcessingWindow.webContents.on('did-finish-load', () => {
+      console.log('图像处理窗口加载完成')
+      // 获取当前 URL 用于调试
+      const currentUrl = imageProcessingWindow.webContents.getURL()
+      console.log('当前窗口 URL:', currentUrl)
+    })
+
+    // 监听导航事件
+    imageProcessingWindow.webContents.on('did-navigate', (event, url) => {
+      console.log('窗口导航到:', url)
+      // 如果被重定向到其他页面，强制回到图像处理页面
+      if (is.dev && !url.includes('/image-processing') && !url.includes('/login')) {
+        console.log('检测到非预期导航，重新加载图像处理页面')
+        imageProcessingWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/image-processing')
+      }
+    })
+
+    return { success: true }
+  })
+
   // 讯飞星火大模型 API
   ipcMain.handle('chat-with-xfyun', async (event, { userMessage }) => {
     try {

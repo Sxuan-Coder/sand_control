@@ -8,6 +8,10 @@
         </div>
       </div>
       <div class="header-right">
+        <el-button type="info" @click="showImageProcessing" class="report-button">
+          <el-icon><Picture /></el-icon>
+          图像处理展示
+        </el-button>
         <el-button type="primary" @click="showReport" class="report-button">
           <el-icon><DataAnalysis /></el-icon>
           数据报表
@@ -868,6 +872,17 @@ export default {
       addLog('图片刷新完成', 'success')
     }
 
+    const showImageProcessing = async () => {
+      try {
+        // 调用主进程打开新窗口
+        await window.api.ipcRenderer.invoke('open-image-processing-window')
+        addLog('打开图像处理窗口', 'info')
+      } catch (error) {
+        ElMessage.error('打开图像处理窗口失败')
+        addLog('打开图像处理窗口失败: ' + error.message, 'error')
+      }
+    }
+
     const showReport = () => {
       reportDialogVisible.value = true
     }
@@ -1044,6 +1059,7 @@ export default {
       testUpdatePhotos,
       handleImageError,
       handleImageLoad,
+      showImageProcessing,
       reportDialogVisible,
       showReport,
       sandGradingReportDialogVisible,
