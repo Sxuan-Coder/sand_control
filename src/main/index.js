@@ -247,6 +247,36 @@ app.whenReady().then(() => {
     return `http://127.0.0.1:8000/images/file?path=${encodeURIComponent(imagePath)}`
   })
 
+  // 读取处理结果 JSON 文件
+  ipcMain.handle('read-processing-results', async () => {
+    try {
+      const fs = require('fs').promises
+      const resultsPath = join(__dirname, '..', '..', 'src', 'main', 'python', 'results', 'processing_results.json')
+      console.log('读取处理结果文件:', resultsPath)
+      const data = await fs.readFile(resultsPath, 'utf-8')
+      return { success: true, data: JSON.parse(data) }
+    } catch (error) {
+      console.error('读取处理结果失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // 获取本地图片的 base64 数据
+  ipcMain.handle('read-local-image', async (event, imagePath) => {
+    try {
+      const fs = require('fs').promises
+      console.log('读取本地图片:', imagePath)
+      const data = await fs.readFile(imagePath)
+      const base64 = data.toString('base64')
+      const ext = imagePath.split('.').pop().toLowerCase()
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png'
+      return { success: true, data: `data:${mimeType};base64,${base64}` }
+    } catch (error) {
+      console.error('读取图片失败:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
   // 测试服务器连接
   ipcMain.handle('test-server-connection', async () => {
     try {

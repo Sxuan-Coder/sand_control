@@ -8,11 +8,12 @@
         <div class="section-title">
           <h3>图像处理对比</h3>
           <el-select v-model="selectedGroup" placeholder="选择组别" class="group-selector">
-            <el-option label="第1组" value="1" />
-            <el-option label="第2组" value="2" />
-            <el-option label="第3组" value="3" />
-            <el-option label="第4组" value="4" />
-            <el-option label="第5组" value="5" />
+            <el-option 
+              v-for="group in availableGroups" 
+              :key="group" 
+              :label="`第${group}组`" 
+              :value="group" 
+            />
           </el-select>
         </div>
 
@@ -21,13 +22,16 @@
         <div class="comparison-container">
           <div class="image-box">
             <div class="image-label">原始图像</div>
-            <div class="image-placeholder">
+            <div class="image-placeholder" v-if="globalImages.original">
+              <img :src="globalImages.original" alt="原始图像" class="result-image" />
+            </div>
+            <div class="image-placeholder" v-else>
               <el-icon class="placeholder-icon"><Camera /></el-icon>
-              <p>全局视图</p>
+              <p>暂无图像</p>
             </div>
             <div class="image-info">
-              <span>分辨率: 1920×1080</span>
-              <span>大小: 2.4MB</span>
+              <span>类型: 全局视图</span>
+              <span>组别: 第{{ selectedGroup }}组</span>
             </div>
           </div>
 
@@ -38,17 +42,17 @@
           <div class="image-box processing">
             <div class="image-label processing-label">
               <span>图像分割</span>
-              <div class="processing-dots">
-                <span></span><span></span><span></span>
-              </div>
             </div>
-            <div class="image-placeholder processing-bg">
+            <div class="image-placeholder" v-if="globalImages.segmented">
+              <img :src="globalImages.segmented" alt="分割图像" class="result-image" />
+            </div>
+            <div class="image-placeholder processing-bg" v-else>
               <el-icon class="placeholder-icon"><Loading /></el-icon>
               <p>分割处理中...</p>
             </div>
             <div class="image-info">
               <span>算法: Watershed</span>
-              <span>进度: 75%</span>
+              <span v-if="getGroupStats.global">颗粒: {{ getGroupStats.global.contours_count }}</span>
             </div>
           </div>
 
@@ -58,13 +62,16 @@
 
           <div class="image-box result">
             <div class="image-label result-label">图像分类</div>
-            <div class="image-placeholder">
+            <div class="image-placeholder" v-if="globalImages.classified">
+              <img :src="globalImages.classified" alt="分类图像" class="result-image" />
+            </div>
+            <div class="image-placeholder" v-else>
               <el-icon class="placeholder-icon"><Finished /></el-icon>
-              <p>分类完成</p>
+              <p>等待分类</p>
             </div>
             <div class="image-info">
-              <span>颗粒数: 1,245</span>
-              <span>置信度: 96.8%</span>
+              <span v-if="getGroupStats.global">颗粒数: {{ getGroupStats.global.contours_count }}</span>
+              <span>状态: 已完成</span>
             </div>
           </div>
         </div>
@@ -74,13 +81,16 @@
         <div class="comparison-container">
           <div class="image-box">
             <div class="image-label">原始图像</div>
-            <div class="image-placeholder">
+            <div class="image-placeholder" v-if="localImages.original">
+              <img :src="localImages.original" alt="原始图像" class="result-image" />
+            </div>
+            <div class="image-placeholder" v-else>
               <el-icon class="placeholder-icon"><Camera /></el-icon>
-              <p>局部视图</p>
+              <p>暂无图像</p>
             </div>
             <div class="image-info">
-              <span>分辨率: 800×600</span>
-              <span>大小: 1.2MB</span>
+              <span>类型: 局部视图</span>
+              <span>组别: 第{{ selectedGroup }}组</span>
             </div>
           </div>
 
@@ -91,17 +101,17 @@
           <div class="image-box processing">
             <div class="image-label processing-label">
               <span>图像分割</span>
-              <div class="processing-dots">
-                <span></span><span></span><span></span>
-              </div>
             </div>
-            <div class="image-placeholder processing-bg">
+            <div class="image-placeholder" v-if="localImages.segmented">
+              <img :src="localImages.segmented" alt="分割图像" class="result-image" />
+            </div>
+            <div class="image-placeholder processing-bg" v-else>
               <el-icon class="placeholder-icon"><Loading /></el-icon>
               <p>分割处理中...</p>
             </div>
             <div class="image-info">
               <span>算法: Watershed</span>
-              <span>进度: 82%</span>
+              <span v-if="getGroupStats.local">颗粒: {{ getGroupStats.local.contours_count }}</span>
             </div>
           </div>
 
@@ -111,13 +121,16 @@
 
           <div class="image-box result">
             <div class="image-label result-label">图像分类</div>
-            <div class="image-placeholder">
+            <div class="image-placeholder" v-if="localImages.classified">
+              <img :src="localImages.classified" alt="分类图像" class="result-image" />
+            </div>
+            <div class="image-placeholder" v-else>
               <el-icon class="placeholder-icon"><Finished /></el-icon>
-              <p>分类完成</p>
+              <p>等待分类</p>
             </div>
             <div class="image-info">
-              <span>颗粒数: 856</span>
-              <span>置信度: 94.3%</span>
+              <span v-if="getGroupStats.local">颗粒数: {{ getGroupStats.local.contours_count }}</span>
+              <span>状态: 已完成</span>
             </div>
           </div>
         </div>
@@ -181,7 +194,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   Picture,
   Camera,
@@ -194,8 +207,188 @@ import {
   DataAnalysis,
   Download
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const selectedGroup = ref('1')
+const processingData = ref(null)
+const availableGroups = ref([])
+
+// 存储已加载的图片 base64 数据
+const imageCache = ref({})
+
+// 加载单张图片
+const loadImage = async (imagePath) => {
+  if (!imagePath) return null
+  
+  // 检查缓存
+  if (imageCache.value[imagePath]) {
+    return imageCache.value[imagePath]
+  }
+  
+  try {
+    const result = await window.api.ipcRenderer.invoke('read-local-image', imagePath)
+    if (result.success) {
+      imageCache.value[imagePath] = result.data
+      return result.data
+    }
+  } catch (error) {
+    console.error('加载图片失败:', error)
+  }
+  
+  return null
+}
+
+// 计算图片路径
+const getImagePath = (viewType, imageType, group) => {
+  if (!processingData.value) return null
+  
+  const viewData = processingData.value[viewType]
+  if (!viewData || viewData.length === 0) return null
+  
+  // 查找对应组的数据
+  const groupData = viewData.find(item => {
+    const fileName = item[`${imageType}_path`]?.split('\\').pop() || ''
+    return fileName.startsWith(`${group}_`)
+  })
+  
+  if (!groupData) return null
+  
+  return groupData[`${imageType}_path`]
+}
+
+// 全局视图图片数据
+const globalImages = ref({
+  original: null,
+  segmented: null,
+  classified: null
+})
+
+// 局部视图图片数据
+const localImages = ref({
+  original: null,
+  segmented: null,
+  classified: null
+})
+
+// 加载当前组的所有图片
+const loadGroupImages = async () => {
+  const globalOriginalPath = getImagePath('global', 'original', selectedGroup.value)
+  const globalSegmentedPath = getImagePath('global', 'segmented', selectedGroup.value)
+  const globalClassifiedPath = getImagePath('global', 'classified', selectedGroup.value)
+  
+  const localOriginalPath = getImagePath('local', 'original', selectedGroup.value)
+  const localSegmentedPath = getImagePath('local', 'segmented', selectedGroup.value)
+  const localClassifiedPath = getImagePath('local', 'classified', selectedGroup.value)
+  
+  // 并行加载所有图片
+  const [
+    globalOriginal,
+    globalSegmented,
+    globalClassified,
+    localOriginal,
+    localSegmented,
+    localClassified
+  ] = await Promise.all([
+    loadImage(globalOriginalPath),
+    loadImage(globalSegmentedPath),
+    loadImage(globalClassifiedPath),
+    loadImage(localOriginalPath),
+    loadImage(localSegmentedPath),
+    loadImage(localClassifiedPath)
+  ])
+  
+  globalImages.value = {
+    original: globalOriginal,
+    segmented: globalSegmented,
+    classified: globalClassified
+  }
+  
+  localImages.value = {
+    original: localOriginal,
+    segmented: localSegmented,
+    classified: localClassified
+  }
+  
+  console.log('图片加载完成，组别:', selectedGroup.value)
+}
+
+// 获取当前组的统计信息
+const getGroupStats = computed(() => {
+  if (!processingData.value) return { global: null, local: null }
+  
+  const findGroupData = (viewType) => {
+    const viewData = processingData.value[viewType]
+    if (!viewData || viewData.length === 0) return null
+    
+    return viewData.find(item => {
+      const fileName = item.original_path?.split('\\').pop() || ''
+      return fileName.startsWith(`${selectedGroup.value}_`)
+    })
+  }
+  
+  return {
+    global: findGroupData('global'),
+    local: findGroupData('local')
+  }
+})
+
+// 加载处理结果数据
+const loadProcessingData = async () => {
+  try {
+    // 使用 IPC 读取本地 JSON 文件
+    const result = await window.api.ipcRenderer.invoke('read-processing-results')
+    
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    
+    processingData.value = result.data
+    
+    // 提取所有可用的组号
+    const groups = new Set()
+    
+    if (result.data.global) {
+      result.data.global.forEach(item => {
+        const fileName = item.original_path?.split('\\').pop() || ''
+        const match = fileName.match(/^(\d+)_/)
+        if (match) groups.add(match[1])
+      })
+    }
+    
+    if (result.data.local) {
+      result.data.local.forEach(item => {
+        const fileName = item.original_path?.split('\\').pop() || ''
+        const match = fileName.match(/^(\d+)_/)
+        if (match) groups.add(match[1])
+      })
+    }
+    
+    availableGroups.value = Array.from(groups).sort((a, b) => parseInt(a) - parseInt(b))
+    
+    // 默认选择第一组
+    if (availableGroups.value.length > 0) {
+      selectedGroup.value = availableGroups.value[0]
+    }
+    
+    console.log('处理数据加载成功:', result.data)
+    console.log('可用组别:', availableGroups.value)
+    
+    // 加载第一组的图片
+    await loadGroupImages()
+  } catch (error) {
+    console.error('加载处理数据失败:', error)
+    ElMessage.error('加载图像数据失败')
+  }
+}
+
+// 监听组别变化
+watch(selectedGroup, () => {
+  loadGroupImages()
+})
+
+onMounted(() => {
+  loadProcessingData()
+})
 </script>
 
 <style scoped>
@@ -453,6 +646,13 @@ const selectedGroup = ref('1')
   overflow: hidden;
   min-height: 150px;
   max-height: 200px;
+}
+
+.result-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .image-placeholder::before {

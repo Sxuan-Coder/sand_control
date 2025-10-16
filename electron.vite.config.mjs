@@ -15,6 +15,12 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [vue()]
+    plugins: [vue()],
+    server: {
+      fs: {
+        // 允许访问 src/main/python/results 目录
+        allow: ['..']
+      }
+    }
   }
 })
