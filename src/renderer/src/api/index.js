@@ -11,8 +11,8 @@ import sandImageApi from './sandImageApi'
 import { chatWithXfyun } from './xfyunApi'
 
 // 获取API基础URL，默认为本地开发环境
-const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:8000' 
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:8000'
   : window.location.origin // 生产环境使用当前域名
 
 // 创建axios实例
@@ -49,6 +49,17 @@ export const getSystemStatus = async () => {
     return response.data
   } catch (error) {
     console.error('获取系统状态失败:', error)
+    throw error
+  }
+}
+
+// 获取系统监控数据(CPU、内存、网络延迟)
+export const getSystemMonitor = async () => {
+  try {
+    const response = await api.get('/system/monitor')
+    return response.data
+  } catch (error) {
+    console.error('获取系统监控数据失败:', error)
     throw error
   }
 }
@@ -232,15 +243,15 @@ export const getImageUrl = (imagePath) => {
   try {
     // 统一路径分隔符为正斜杠，适合URL格式
     const normalizedPath = imagePath.replace(/\\/g, '/');
-    
+
     // 去除路径中的多余斜杠和点
     const cleanPath = normalizedPath
       .replace(/\/+/g, '/') // 多个斜杠替换为单个
       .replace(/\/\.\//g, '/') // 移除 /./
       .replace(/^\.\/?/, ''); // 移除开头的 ./ 或 .
-      
+
     const url = `${API_BASE_URL}/images/file?path=${encodeURIComponent(cleanPath)}`;
-    
+
     // 只在开发模式下输出调试信息
     if (process.env.NODE_ENV === 'development') {
       // console.log('构建图片URL:', {
@@ -249,7 +260,7 @@ export const getImageUrl = (imagePath) => {
       //   url
       // });
     }
-    
+
     return url;
   } catch (error) {
     console.error('生成图片URL时出错:', error);
@@ -289,6 +300,7 @@ export {
 // 兼容性导出一个API对象
 const API = {
   getSystemStatus,
+  getSystemMonitor,
   chatWithXfyun,
   testServerConnection,
   initializeSystem,
