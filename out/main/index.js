@@ -190,6 +190,32 @@ electron.app.whenReady().then(() => {
   electron.ipcMain.handle("get-image-url", async (event, { imagePath }) => {
     return `http://127.0.0.1:8000/images/file?path=${encodeURIComponent(imagePath)}`;
   });
+  electron.ipcMain.handle("read-processing-results", async () => {
+    try {
+      const fs2 = require("fs").promises;
+      const resultsPath = path.join(__dirname, "..", "..", "src", "main", "python", "results", "processing_results.json");
+      console.log("读取处理结果文件:", resultsPath);
+      const data = await fs2.readFile(resultsPath, "utf-8");
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      console.error("读取处理结果失败:", error);
+      return { success: false, error: error.message };
+    }
+  });
+  electron.ipcMain.handle("read-local-image", async (event, imagePath) => {
+    try {
+      const fs2 = require("fs").promises;
+      console.log("读取本地图片:", imagePath);
+      const data = await fs2.readFile(imagePath);
+      const base64 = data.toString("base64");
+      const ext = imagePath.split(".").pop().toLowerCase();
+      const mimeType = ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+      return { success: true, data: `data:${mimeType};base64,${base64}` };
+    } catch (error) {
+      console.error("读取图片失败:", error);
+      return { success: false, error: error.message };
+    }
+  });
   electron.ipcMain.handle("test-server-connection", async () => {
     try {
       const response = await api.get("/hello");
@@ -216,9 +242,6 @@ electron.app.whenReady().then(() => {
     });
     imageProcessingWindow.on("ready-to-show", () => {
       imageProcessingWindow.show();
-      if (utils.is.dev) {
-        imageProcessingWindow.webContents.openDevTools();
-      }
     });
     imageProcessingWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
       callback({

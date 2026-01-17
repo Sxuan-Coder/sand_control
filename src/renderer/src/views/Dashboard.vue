@@ -224,7 +224,7 @@
                 </div>
                 <div class="photo-info">
                   <span>组{{ photo.group }} - 照片{{ photo.photo }} {{ photo.time }}</span>
-                
+
                 </div>
               </div>
             </div>
@@ -247,9 +247,9 @@
               </div>
               <div class="progress-bar">
                   <div class="progress" :style="{ width: modelProgress + '%' }"></div>
-                  
+
               </div>
-              <h2 style="justify-content: center;text-align: center;color: orange;">实验进度</h2>
+              <h2 style="justify-content: center;text-align: center;color: #00a8ff;">实验进度</h2>
           </div>
         </div>
       </div>
@@ -315,8 +315,8 @@ import api, {
 import EquipmentModel from '../components/EquipmentModel.vue'
 
 // 获取API基础URL
-const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:8000' 
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:8000'
   : window.location.origin;
 
 export default {
@@ -419,11 +419,11 @@ export default {
     const testBaiduConnection = async () => {
       try {
         addLog('正在测试网络连接...', 'info')
-        
+
         // 使用 IPC 通信测试网络连接
         // 这种方法可以避免 CSP 限制
         const result = await window.api.checkApiStatus()
-        
+
         if (result.success) {
           ElMessage.success('网络连接正常')
           addLog('网络连接正常', 'success')
@@ -434,7 +434,7 @@ export default {
           return false
         }
       } catch (error) {
-       
+
         return false
       }
     }
@@ -506,7 +506,7 @@ export default {
         startLoading.value = true
         await startProcess({
           base_path: dataPath.value,
-          start_group: 1, 
+          start_group: 1,
           photos_per_group: photosPerGroup.value,
           once_count: feedingAmount.value
         })
@@ -579,22 +579,22 @@ export default {
     const loadLocalImages = async () => {
       try {
         // console.log('开始加载本地图片...');
-        
+
         // 更新图片路径
         globalImagesPath.value = `${dataPath.value}/global`;
         localImagesPath.value = `${dataPath.value}/local`;
-        
+
         // 创建Promise数组，同时请求global和local图片
         const [globalResponse, localResponse] = await Promise.all([
           getDirectoryImages(globalImagesPath.value),
           getDirectoryImages(localImagesPath.value)
         ]);
-        
+
         const globalFiles = globalResponse.data || [];
         const localFiles = localResponse.data || [];
-        
+
         // console.log(`找到全局图片: ${globalFiles.length}张, 本地图片: ${localFiles.length}张`);
-        
+
         // 处理全局图片
         const globalImages = globalFiles.map(file => {
           const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || [];
@@ -607,7 +607,7 @@ export default {
             time: file.modifiedTime
           };
         }).filter(img => img.group > 0 && img.photo > 0);
-        
+
         // 处理本地图片
         const localImages = localFiles.map(file => {
           const fileNameMatch = file.name.match(/(\d+)_(\d+)\.jpg$/i) || [];
@@ -620,27 +620,27 @@ export default {
             time: file.modifiedTime
           };
         }).filter(img => img.group > 0 && img.photo > 0);
-        
+
         // 合并并优先按照时间排序
         const allImages = [...globalImages, ...localImages].sort((a, b) => {
           // 首先按照修改时间排序（降序）
           const timeA = new Date(a.time).getTime();
           const timeB = new Date(b.time).getTime();
           if (timeA !== timeB) return timeB - timeA;
-          
+
           // 时间相同时，按组号排序（降序）
           if (a.group !== b.group) return b.group - a.group;
-          
+
           // 组号相同时，按照照片号排序（降序）
           if (a.photo !== b.photo) return b.photo - a.photo;
-          
+
           // 最后按来源排序，让local排在global后面
           return a.source === 'global' ? -1 : 1;
         });
-        
+
         // 更新缓存
         cachedImages.value = allImages;
-        
+
         if (allImages.length === 0) {
           console.log('未找到有效图片');
           addLog(`未找到图片。查找路径: ${globalImagesPath.value} 和 ${localImagesPath.value}`, 'warning');
@@ -652,21 +652,21 @@ export default {
             acc[key].push(`${img.source}_${img.photo}`);
             return acc;
           }, {});
-          
+
           Object.entries(groupedImages).forEach(([group, photos]) => {
             console.log(`${group}: ${photos.join(', ')}`);
           });
-          
+
           addLog(`成功加载 ${allImages.length} 张图片（全局：${globalImages.length}，本地：${localImages.length}）`, 'success');
 
           // 根据加载的图片更新进度
           const totalExpectedPhotos = totalGroups.value * photosPerGroup.value;
           const currentTotalPhotos = Math.max(globalImages.length, localImages.length);
-          
+
           // 更新进度
           completedGroups.value = Math.floor(currentTotalPhotos / photosPerGroup.value);
           currentPhoto.value = currentTotalPhotos % photosPerGroup.value;
-          
+
           // 确保不超过总数
           if (completedGroups.value >= totalGroups.value) {
             completedGroups.value = totalGroups.value;
@@ -675,7 +675,7 @@ export default {
             addLog('实验已完成', 'success');
           }
         }
-        
+
         return allImages;
       } catch (error) {
         console.error('加载图片失败:', error);
@@ -687,7 +687,7 @@ export default {
     // 创建测试图片数据
     const createTestImages = () => {
       const imgPath = '/test-image.jpg'
-      
+
       // 创建模拟图片数据，按照特定顺序排列
       cachedImages.value = [
         {
@@ -729,10 +729,10 @@ export default {
     const updateLatestPhotos = async () => {
       try {
         // console.log('开始刷新图片显示...');
-        
+
         // 重新加载最新的图片
         const images = await loadLocalImages();
-        
+
         if (images.length === 0) {
           latestPhotos.value = Array(4).fill({
             path: '',
@@ -771,7 +771,7 @@ export default {
             // 首先按最新时间排序
             const timeComparison = b.latestTime.getTime() - a.latestTime.getTime();
             if (timeComparison !== 0) return timeComparison;
-            
+
             // 时间相同时才考虑组号和照片号
             const [aGroup, aPhoto] = a.key.split('_').map(Number);
             const [bGroup, bPhoto] = b.key.split('_').map(Number);
@@ -779,7 +779,7 @@ export default {
             return bPhoto - aPhoto;
           });
 
-        // console.log('找到的完整图片对:', 
+        // console.log('找到的完整图片对:',
         //   completePairs.map(p => {
         //     const [group, photo] = p.key.split('_');
         //     return `组${group}照片${photo}(${p.latestTime.toLocaleTimeString()})`;
@@ -836,7 +836,7 @@ export default {
       } catch (error) {
         console.error('获取图片失败:', error);
         addLog('获取图片失败: ' + error.message, 'error');
-        
+
         latestPhotos.value = Array(4).fill({
           path: '',
           group: 0,
@@ -965,13 +965,13 @@ export default {
       try {
         // 调用后端API获取真实系统监控数据
         const data = await getSystemMonitor()
-        
+
         // 更新CPU使用率
         cpuUsage.value = data.cpu_usage
-        
+
         // 更新内存使用量
         memoryUsage.value = data.memory_usage.toFixed(2)
-        
+
         // 更新网络延迟
         networkDelay.value = data.network_delay
       } catch (error) {
@@ -986,7 +986,7 @@ export default {
     onMounted(async () => {
       // 检查服务器连接状态
       await checkServerConnection()
-      
+
       // 初始化给料数据
       for (let i = 0; i < 10; i++) {
         updateFeedingData()
@@ -1012,7 +1012,7 @@ export default {
       timer = setInterval(() => {
         // 更新系统监控指标（每秒都更新）
         updateSystemMonitors()
-        
+
         if (isRunning.value) {
           updateFeedingData()
           elapsedTime.value++
@@ -1893,6 +1893,37 @@ body {
 
 :deep(.el-input-number.is-disabled .el-input__inner) {
   color: rgba(0, 168, 255, 0.5);
+}
+
+/* 禁用状态的按钮样式 */
+:deep(.el-button--danger.is-disabled),
+:deep(.el-button--danger.is-disabled:hover),
+:deep(.el-button--danger.is-disabled:focus),
+:deep(.el-button--danger.is-disabled:active) {
+  background-color: rgba(185, 28, 28, 0.3);
+  border-color: rgba(185, 28, 28, 0.4);
+  color: #991B1B;
+  cursor: not-allowed;
+}
+
+:deep(.el-button--success.is-disabled),
+:deep(.el-button--success.is-disabled:hover),
+:deep(.el-button--success.is-disabled:focus),
+:deep(.el-button--success.is-disabled:active) {
+  background-color: rgba(22, 101, 52, 0.3);
+  border-color: rgba(22, 101, 52, 0.4);
+  color: #166534;
+  cursor: not-allowed;
+}
+
+:deep(.el-button--primary.is-disabled),
+:deep(.el-button--primary.is-disabled:hover),
+:deep(.el-button--primary.is-disabled:focus),
+:deep(.el-button--primary.is-disabled:active) {
+  background-color: rgba(30, 64, 175, 0.3);
+  border-color: rgba(30, 64, 175, 0.4);
+  color: #1E40AF;
+  cursor: not-allowed;
 }
 
 .control-buttons {

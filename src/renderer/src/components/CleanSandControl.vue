@@ -349,4 +349,34 @@ onUnmounted(() => {
   color: #f56c6c;
   opacity: 0.8;
 }
+
+:deep(.el-button--danger.is-disabled),
+:deep(.el-button--danger.is-disabled:hover),
+:deep(.el-button--danger.is-disabled:focus),
+:deep(.el-button--danger.is-disabled:active) {
+  background-color: rgba(185, 28, 28, 0.3);
+  border-color: rgba(185, 28, 28, 0.4);
+  color: #991B1B;
+  cursor: not-allowed;
+}
+
+:deep(.el-button--success.is-disabled),
+:deep(.el-button--success.is-disabled:hover),
+:deep(.el-button--success.is-disabled:focus),
+:deep(.el-button--success.is-disabled:active) {
+  background-color: rgba(22, 101, 52, 0.3);
+  border-color: rgba(22, 101, 52, 0.4);
+  color: #166534;
+  cursor: not-allowed;
+}
+
+:deep(.el-button--primary.is-disabled),
+:deep(.el-button--primary.is-disabled:hover),
+:deep(.el-button--primary.is-disabled:focus),
+:deep(.el-button--primary.is-disabled:active) {
+  background-color: rgba(30, 64, 175, 0.3);
+  border-color: rgba(30, 64, 175, 0.4);
+  color: #1E40AF;
+  cursor: not-allowed;
+}
 </style>
